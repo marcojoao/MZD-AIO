@@ -20,8 +20,8 @@
     .controller('CasdkCtrl', ['$scope', '$http', CasdkCtrl])
     .controller('MainCtrl', function ($scope, $http, $route, $location, $filter) {
       // All scoped variables for labels come from launguage files in the '/lang' folder
-      $scope.appName = app.getName()
-      $scope.appVer = app.getVersion()
+      $scope.appName = desktopData.app.name
+      $scope.appVer = desktopData.app.version
       $scope.newLanguage = 'NewLanguage'
       $scope.menu = langObj.menu
       $scope.mainOps = langObj.mainOps
@@ -75,7 +75,7 @@
         darkMode: settings.get('darkMode', false),
         flipOption: settings.get('flipOption', ''),
         transMsg: settings.get('transMsg', false),
-        copydir: persistantData.get('copyFolderLocation'),
+        copydir: persistantData.get('copyFolderLocation', desktopData.paths.desktop),
         spdValues: speedoSave.get('spdValues', spdValues),
         multictrl: speedoSave.get('multictrl', multictrl),
         fuelBarColors: speedoSave.get('fuelBarColors', fuelBarColors),
@@ -179,6 +179,8 @@
         fullscreen: 2,
         v4lsink: true
       }
+      const userDefaults = MZDDesktop.mergeDefaults($scope.user, {})
+      $scope.user = MZDDesktop.mergeDefaults(userDefaults, settings.store)
       $scope.vpOpsRepeat = {
         None: 0,
         One: 1,
@@ -463,9 +465,7 @@
             startTime()
           })
         }
-        if (persistantData.get('visits') > 10) {
-          $scope.user.mainOps = [7]
-        }
+        // Preserve the selected main operations across visits and upgrades.
         if (persistantData.get('menuLock')) {
           $('body, .hideNav, .w3-overlay').addClass('showNav')
         }
@@ -501,36 +501,36 @@
 
       // TODO: More saving options. Save different settings by name.
       // $scope.$storage = $localStorage
-      $scope.saveOps = function () {
+      $scope.saveOps = async function () {
         if ($location.path().includes('translate')) {
           $('#submit').click()
         } else {
-          settings.set($scope.user)
-          bootbox.alert({
-            message: 'Options Saved!',
-            size: 'small'
-          })
-          closeHelpDrop()
+          try {
+            await settings.set($scope.user)
+            await settings.flush()
+            bootbox.alert({ message: 'Options Saved!', size: 'small' })
+            closeHelpDrop()
+          } catch (error) {
+            bootbox.alert({ message: 'Could not save options: ' + error.message, size: 'small' })
+          }
         }
       }
-      $scope.miniSave = function () {
-        settings.set(`darkMode`, $scope.user.darkMode)
-        settings.set(`flipOption`, $scope.user.flipOption)
-        bootbox.alert({
-          message: 'Saved!',
-          size: 'small'
-        })
-        closeHelpDrop()
+      $scope.miniSave = async function () {
+        try {
+          await settings.set({ darkMode: $scope.user.darkMode, flipOption: $scope.user.flipOption })
+          await settings.flush()
+          bootbox.alert({ message: 'Saved!', size: 'small' })
+          closeHelpDrop()
+        } catch (error) {
+          bootbox.alert({ message: 'Could not save options: ' + error.message, size: 'small' })
+        }
       }
       $scope.loadOps = function () {
         if ($location.path().includes('translate')) {
           $('#import').click()
         } else {
-          if (settings.get('reset', false)) {
-            settings.set($scope.user)
-            settings.delete('reset')
-          }
-          $scope.user = settings.store
+          // Legacy reset flags never discard the user's selections.
+          $scope.user = MZDDesktop.mergeDefaults(userDefaults, settings.store)
           closeHelpDrop()
           setTimeout(function () {
             snackbar('Options Loaded!')
@@ -543,7 +543,7 @@
         if (lastView.size === 0) {
           lastView.set($scope.user)
         }
-        $scope.user = lastView.store
+        $scope.user = MZDDesktop.mergeDefaults(userDefaults, lastView.store)
         closeHelpDrop()
         setTimeout(function () {
           snackbar('Loaded Last Compiled Options!')
@@ -645,17 +645,7 @@
         }
       }
       $scope.getLanguage = function () {
-        var langURL = getParameterByName('lang')
-        if (langURL) {
-          persistantData.set('lang', langURL)
-        } else {
-          langURL = persistantData.get('lang', 'english')
-        }
-        langURL = `./lang/${langURL}.aio.json`
-        if ($location.path().includes('joiner')) {
-          langURL = `../${langURL}`
-        }
-        $.getJSON(langURL)
+        return desktopData.language.messages
       }
       $scope.getScript = function (url) {
         $.getScript(url, function (data, textStatus, jqxhr) {
@@ -854,16 +844,15 @@
         })
       }
 
-      $scope.compileTweaks = function () {
-        if ($scope.user.options.includes(19)) {
-          $scope.saveSpeedoOps()
-        }
-        lastView.set($scope.user)
-        $('#compileButton, #compileAutorun, .btn-group, .btn-group~*, .checkAutorun, .handle').hide()
+      $scope.compileTweaks = async function () {
         try {
+          if ($scope.user.options.includes(19)) $scope.saveSpeedoOps()
+          await lastView.set($scope.user)
+          await lastView.flush()
+          $('#compileButton, #compileAutorun, .btn-group, .btn-group~*, .checkAutorun, .handle').hide()
           buildTweakFile($scope.user)
-        } catch (e) {
-          dialog.showErrorBox('AIO ERROR', `${e.toString()}`)
+        } catch (error) {
+          bootbox.alert({ message: 'Could not compile: ' + error.message, size: 'small' })
         }
       }
     })

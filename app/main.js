@@ -19,7 +19,6 @@ const dialog = electron.dialog
 const Tray = electron.Tray
 const ipc = electron.ipcMain
 const nativeImage = electron.nativeImage
-const crashReporter = electron.crashReporter
 // Manage unhandled exceptions as early as possible
 process.on('uncaughtException', (e) => {
   console.error(`Caught unhandled exception: ${e}`)
@@ -37,9 +36,24 @@ const drivelist = require('drivelist') // Module that gets the available USB dri
 const backgroundDir = path.resolve(path.join(`${__dirname}`, `../background-images/`))
 const defaultDir = path.join(backgroundDir, 'default/')
 const blankAlbumArtDir = path.join(backgroundDir, 'blank-album-art/')
-const Config = require('electron-store')
-const persistantData = new Config({ 'name': 'aio-persist' })
-const userThemes = new Config({ 'name': 'user-themes' })
+const { createPreferenceService } = require('./desktop/preferences')
+const { createDesktopClient } = require('./assets/js/desktop-client')
+const { registerPreferenceIpc } = require('./desktop/preferences-ipc')
+
+async function startDesktopMain () {
+// Capture the original electron-store location before legacy app.setName calls.
+const legacyDirectory = app.getPath('userData')
+const preferenceService = createPreferenceService({
+  directory: path.join(legacyDirectory, 'preferences'),
+  legacyDirectory,
+  resourceDirectory: __dirname,
+  app: { name: pjson.productName || 'MZD-AIO-TI', version: pjson.version },
+  paths: { home: __dirname, userData: legacyDirectory, desktop: app.getPath('desktop'), documents: app.getPath('documents') }
+})
+const preferenceClient = createDesktopClient(await preferenceService.bootstrap(), preferenceService,
+  error => dialog.showErrorBox('Could not save preferences', error.message))
+const persistantData = preferenceClient.stores['aio-persist']
+
 const gotTheLock = app.requestSingleInstanceLock()
 require('./menus/menu.js') // Menu
 require('./menus/context-menu.js')
@@ -49,7 +63,6 @@ var hasColorFiles = fs.existsSync(`${app.getPath('userData')}/color-schemes/`)
 var hasSpeedCamFiles = fs.existsSync(`${app.getPath('userData')}/speedcam-patch/`)
 var iconLoc = path.join(app.getAppPath(), '/icon.icns')
 var favicon = './app/icon.icns'
-process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = true
 if (process.platform === 'win32') {
   iconLoc = path.join(app.getAppPath(), 'icon.ico')
   favicon = './app/icon.ico'
@@ -71,12 +84,7 @@ const isDev = (require('electron-is-dev') || pjson.config.debug)
 global.appSettings = pjson.config
 global.pjson = pjson
 persistantData.set('AIO-Ver', pjson.version)
-crashReporter.start({
-  companyName: 'Trevelopment',
-  submitURL: 'https://trevelopment.com/crash/bin/mini-breakpad-server',
-  uploadToServer: true,
-  extra: persistantData.store
-})
+// Automatic crash reporting/uploads are disabled by default.
 if (isDev) {
   console.info('Running in development')
   app.setPath('home', path.resolve(`${__dirname}`))
@@ -97,6 +105,7 @@ require('electron-debug')({
 })
 // Prevent window being garbage collected
 let mainWindow
+registerPreferenceIpc({ ipcMain: ipc, service: preferenceService, getWebContents: () => mainWindow && mainWindow.webContents, indexPath: path.join(__dirname, 'index.html') })
 // Other windows we may need
 let devtools = null
 let infoWindow = null
@@ -189,10 +198,15 @@ function initialize () {
       win.focus()
     })
 
-    function setCopyLoc (loc) {
-      persistantData.set('copyFolderLocation', app.getPath(loc))
-      win.webContents.send('set-copy-loc', app.getPath(loc))
-      console.log(`Copy_to_usb: ${persistantData.get('copyFolderLocation')}`)
+    async function setCopyLoc (loc) {
+      try {
+        await persistantData.set('copyFolderLocation', app.getPath(loc))
+        await preferenceClient.flush()
+        win.webContents.send('set-copy-loc', app.getPath(loc))
+        console.log(`Copy_to_usb: ${persistantData.get('copyFolderLocation')}`)
+      } catch (error) {
+        dialog.showErrorBox('Could not save preferences', error.message)
+      }
     }
     console.log(`Copy_to_usb: ${persistantData.get('copyFolderLocation')}`)
     if (process.platform === 'win32') {
@@ -253,7 +267,8 @@ function initialize () {
       mainWindow = createMainWindow()
     }
   })
-  app.on('ready', () => {
+  app.whenReady().then(async () => {
+    await preferenceClient.flush()
     if (!mainWindow) {
       mainWindow = createMainWindow()
     }
@@ -270,7 +285,7 @@ function initialize () {
     }
     // Manage automatic updates
     try {
-      if (!process.execPath.includes('electron')) { // match(/[\\\/]electron/)) {
+      if (false) { // Automatic updating is disabled by default.
         require('./lib/auto-update/update.js')({
           url: (pjson.config.update) ? pjson.config.update.url || false : false,
           version: app.getVersion()
@@ -292,12 +307,21 @@ function initialize () {
     } catch (e) {
       console.error(`Could not find USB Drives ${e.message}`)
     }
-  })
+  }).catch(error => dialog.showErrorBox('MZD-AIO could not start', error.message))
   app.on('will-quit', () => {})
-  app.on('before-quit', () => {
-    var v = Number(persistantData.get('visits')) + 1
-    // save some persistant data
-    persistantData.set('visits', v)
+  let preferencesFlushedForQuit = false
+  app.on('before-quit', async event => {
+    if (preferencesFlushedForQuit) return
+    event.preventDefault()
+    try {
+      const current = await preferenceService.getPreferences('aio-persist')
+      await persistantData.set('visits', Number(current.visits || 0) + 1)
+      await preferenceClient.flush()
+      preferencesFlushedForQuit = true
+      app.quit()
+    } catch (error) {
+      dialog.showErrorBox('Could not save preferences', error.message)
+    }
   })
   app.on('web-contents-created', (event, contents) => {
     contents.on('new-window', (event, url, frameName, disposition, options) => {
@@ -614,3 +638,11 @@ ipc.on('download-aio-files', (event, arg) => {
   }
 })
 initialize()
+}
+startDesktopMain().catch(error => {
+  console.error('MZD-AIO could not start: ' + error.message)
+  app.whenReady().then(() => {
+    dialog.showErrorBox('MZD-AIO could not start', error.message)
+    app.quit()
+  })
+})

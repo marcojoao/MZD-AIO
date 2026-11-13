@@ -15,7 +15,7 @@
 |** ************************************************************************ **|
 \* ************************************************************************** */
 -->
-<html ng-app="AIO" lang="en-US">
+<html lang="en-US">
 <head>
   <!--base href="/"-->
   <meta charset="UTF-8">
@@ -26,7 +26,7 @@
   <script>if (typeof module === 'object') {window.module = module; module = undefined;}</script>
   <script src="./assets/vendor/jquery.min.js"></script>
   <script src="./assets/vendor/pace.min.js"></script>
-  <script src="./assets/js/index.js"></script>
+  <script src="./assets/js/desktop-client.js"></script>
   <script>if (window.module) module = window.module;</script>
   <link rel="stylesheet" href="./assets/vendor/pace.css">
   <link rel="stylesheet" href="./assets/vendor/bootstrap.min.css">
@@ -47,7 +47,6 @@
   <link rel="stylesheet" href="./assets/css/help.css">
   <script src="./assets/js/spdValues.js"></script>
   <script src="./assets/js/audioSourceList.js"></script>
-  <script src="./assets/js/messages-settings.js"></script>
   <!--script src="./assets/vendor/angular-mocks/angular-mocks.js"></script>-->
   <script src="./assets/vendor/angular.min.js"></script><!-- FOR PRODUCTION -->
   <script src="./assets/vendor/angular-route.js"></script>
@@ -240,12 +239,17 @@
 <script src="./assets/vendor/gritter.js"></script>
 <script src="./assets/js/gritter-conf.js"></script>
 <script src="./assets/js/ex-links.js"></script>
-<script src="./assets/js/build-tweaks.js"></script>
-<script src="./assets/js/notifications.js"></script>
-<script src="./assets/js/events.js"></script>
 <script src="./assets/vendor/jsoneditor.min.js"></script>
 <script src="./assets/vendor/sceditor/minified/jquery.sceditor.min.js"></script>
 <script type="text/javascript">
+  window.desktopStartup = MZDDesktop.startDesktop(window, async function () {
+    await MZDDesktop.loadDesktopScripts(window, [
+      './assets/js/index.js',
+      './assets/js/messages-settings.js',
+      './assets/js/build-tweaks.js',
+      './assets/js/notifications.js',
+      './assets/js/events.js'
+    ])
     $('.slide-out-div').tabSlideOut({
       tabHandle: '.handle', // class of the element that will become your tab
       // pathToTabImage: 'files/img/tab.png', //path to the image for the tab
@@ -262,7 +266,7 @@
       console.debug(navigator.onLine ? 'online' : 'offline')
     }
     firstTimeVisit()
-    if (navigator.onLine) {
+    if (false) { // Remote translation downloads are disabled by default.
       var translateUrl = "https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"
       $.getScript(translateUrl)
         .done(function(script, textStatus) {
@@ -303,5 +307,6 @@
         $('#update-available a').addClass('w3-hide')
       }
     })
+  })
   </script>
 </html>

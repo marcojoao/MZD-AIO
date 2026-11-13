@@ -118,6 +118,63 @@ clone, obtain the reviewed upstream commit during setup, not from inside tests.
 Executable permission changes are not byte changes and are not checked here.
 Mutation tests create their own temporary Git repositories, never edit real payloads.
 
+## Preferences and asynchronous renderer bootstrap (Task 3)
+
+The main preference service (`app/desktop/preferences.js`) owns exactly seven JSON
+stores: `aio-data`, `aio-persist`, `aio-data-obj`, `aio-last`, `user-themes`, `casdk`,
+and `MZD_Speedometer`. Main captures the original Electron `userData` directory
+before legacy naming changes. Reads prefer `<userData>/preferences/<store>.json`,
+falling back to the old `<userData>/<store>.json`. The first save copies that
+store's existing object into the new directory without deleting or rewriting the
+old file. Filenames and object shapes are unchanged. Missing files are empty;
+malformed JSON or unsafe keys fail explicitly, never reset themselves.
+
+The service exports `createPreferenceService(trustedOptions)` with asynchronous
+`bootstrap()`, `getPreferences(store)`, and `setPreference(store, key, JSONValue)`.
+It serializes reads and writes, validates JSON before persistence, and writes via
+an exclusive same-directory temporary file, fsync and atomic rename. The main
+process supplies paths and app metadata, not renderer request arguments. Locale
+JSON/schema come from shipped `app/lang`; unknown language names fall back to
+English without rewriting the saved choice. The existing four language links
+are recognized from the validated main frame URL on bootstrap.
+
+Preload exposes only `window.aio.bootstrap`, `.getPreferences`, and
+`.setPreference`, using `aio:bootstrap`, `aio:get-preferences`, and
+`aio:set-preference` invoke channels. The handler requires the owned webContents,
+its main frame, and the exact local index page. It rejects extra arguments and
+invalid stores, keys, and JSON values. This does not secure the *remaining*
+legacy IPC/native operations; that is Task 4.
+
+`desktop-client.js` has no Node dependencies. After successful bootstrap, its
+caches support synchronous `.get`, `.has`, `.store` snapshots and `.size`, with
+ordered asynchronous `.set(key, value)` and bulk `.set(object)`. Dotted keys and
+escaped literal dots match the old dot-prop convention. `flush()` is a barrier
+for all writes queued before it. Cache writes are optimistic, not saved-state
+acknowledgements: callers must await `set`/`flush` before reporting success or
+compiling. A failed save is shown, remains observable through `flush`, and blocks
+later saves until reload; ignored legacy event-handler promises are handled.
+No clear/delete capability is exposed. Upgrade cleanup no longer clears saved
+selections, last compilation, or unknown legacy fields. Loading old settings
+merges missing defaults recursively but replaces arrays, preserving selections.
+
+`index.html` no longer uses Angular auto-bootstrap. The client waits for DOM ready
+and bootstrap data, installs globals, then loads the fixed dependent script list
+sequentially before calling Angular exactly once. Failure renders startup text
+instead of initializing controllers. `MainCtrl` save/mini-save wait for disk;
+compilation waits for the shared persistence barrier. Main preferences use the
+same service, and main quit waits for its queued writes. Pending renderer writes
+not yet sent across IPC still require the Task 4 window-close handshake.
+
+These unit tests run in the same offline scratch runner, without dependencies or
+Electron. VM tests fake only Electron transport, Angular/DOM/UI/native boundaries;
+they exercise the real preload, handlers, service, client and controller bodies.
+The complete application is **not yet launchable under the required security
+settings**: remaining renderer `require`, window/dialog/clipboard/filesystem,
+legacy IPC and native drivelist use belong to Task 4, and compiler/translator
+file operations belong to Task 5. The removed broad `Config` global must not be
+restored for translator/speedo-config auxiliary stores; migrate those explicitly.
+AngularJS remains an unsupported maintenance dependency.
+
 ## Reviewed lifecycle decisions and native limitation
 
 Root's automatic native postinstall and upgrade script were removed. The app has

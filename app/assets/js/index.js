@@ -12,18 +12,19 @@
 \* ************************************************************************** */
 /* jshint esversion:8, -W033, -W117, -W097, -W116 */
 const { electron, nativeImage, remote, clipboard, shell } = require('electron')
-const { app, BrowserWindow, dialog } = remote
+// Metadata comes only from the completed bootstrap, never electron.remote.
+const app = Object.freeze({
+  getName: () => desktopData.app.name,
+  getVersion: () => desktopData.app.version,
+  getPath: name => desktopData.paths[name],
+  getAppPath: () => desktopData.paths.home
+})
+// Remaining native window/dialog callers are migrated in Task 4.
+const { BrowserWindow, dialog } = remote || {}
 const _ = require('lodash')
 const fs = require('fs')
 const ipc = require('electron').ipcRenderer
-const Config = require('electron-store')
-const settings = new Config({ 'name': 'aio-data' })
-const persistantData = new Config({ 'name': 'aio-persist' })
-const dataObj = new Config({ 'name': 'aio-data-obj' })
-const lastView = new Config({ 'name': 'aio-last' })
-const userThemes = new Config({ 'name': 'user-themes' })
-const casdkApps = new Config({ 'name': 'casdk' })
-const speedoSave = new Config({ 'name': 'MZD_Speedometer' })
+// Preference caches are installed on window only after aio.bootstrap succeeds.
 const { writeFileSync } = require('fs')
 const isDev = require('electron-is-dev')
 const path = require('path')
@@ -38,10 +39,10 @@ const rimraf = require('rimraf') // Equiv of Unix command rm -rf
 var copyFolderLocation = persistantData.get('copyFolderLocation', app.getPath('desktop'))
 var visits = persistantData.get('visits', 0)
 var hasSpeedCamFiles = false // fs.existsSync(`${app.getPath('userData')}/speedcam-patch/`)
-var translateSchema, langPath, lang, langDefault
+// Language and app/path metadata are supplied by desktopData.
 var colordir = `${app.getPath('userData')}/color-schemes/` // Location of downloaded color theme files (userData)
 var hasColorFiles = fs.existsSync(`${colordir}`)
-var approot = (isDev ? './app/' : app.getAppPath())
+var approot = desktopData.paths.home
 var builddir = `${approot}/files/tweaks/` // Location of tweak files (as .txt files)
 var logFileName = 'MZD_LOG' // Name of log file (without extension)
 var varDir = `${app.getPath('userData')}/background/` // Location of files with saved variables
@@ -49,7 +50,6 @@ var getBackground = `${varDir}/background.png`
 var date = function () { return new Date() }
 var dataURL = ''
 var aioURL = ''
-process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = true
 var helpClick = false
 var updateVer = 286
 // require('./lib/log')('MZD-AIO-LOG')
@@ -60,25 +60,11 @@ var updateVer = 286
 console.debug("speedcamfiles: "+hasSpeedCamFiles) */
 // console.debug(visits)
 /* END LOGS */
-// Manage unhandled exceptions as early as possible
-process.on('uncaughtException', (e) => {
-  console.error(`Caught unhandled exception: ${e}`)
-  dialog.showErrorBox('Caught unhandled exception: ' + (`${e}` || 'Unknown error message'), 'You can report this error to aio@mazdatweaks.com\nor open in issue in the repo https://github.com/Trevelopment/MZD-AIO')
-  app.quit()
-})
-lang = persistantData.get('lang', 'english')
-if (window.location.pathname.includes('joiner')) {
-  langPath = `../lang/${lang}.aio.json`
-  langDefault = '../lang/english.aio.json'
-  translateSchema = require('../lang/aio.schema.json')
-} else {
-  langPath = `${app.getPath('home')}/lang/${lang}.aio.json`
-  langDefault = `${app.getPath('home')}/lang/english.aio.json`
-  translateSchema = require(`${app.getPath('home')}/lang/aio.schema.json`)
-}
-var langObj = require(langPath)
-var langDef = require(langDefault)
-langObj = _.merge(langDef, langObj)
+// Locale JSON/schema are supplied by bootstrap; no renderer-selected paths.
+var translateSchema = desktopData.language.schema
+var lang = desktopData.language.name
+var langObj = desktopData.language.messages
+var langDef = desktopData.language.defaults
 /* IDEA FOR AIO BG PICKER
 var bg-images = []
 fs.readdir('./background-images/', (err, files) => {
@@ -178,7 +164,7 @@ function announcement () {
 }
 
 function dataCheck () {
-  persistantData.delete('updateAvailable')
+  // Preserve unknown and legacy preference keys during modernization.
   localStorage.setItem(`dat${updateVer}`, true)
 }
 
@@ -218,25 +204,13 @@ function updateNotes () {
 function firstTimeVisit () {
   if (persistantData.get('updateVer', 0) < updateVer) {
     myStance()
-    settings.set('reset', true)
-    lastView.clear()
+    // An application upgrade must not reset saved selections or last compilation.
     if(persistantData.has('updateVer')) {
       updateNotes()
     }
     persistantData.set('updateVer', updateVer)
     persistantData.set('updated', false)
-    persistantData.delete('ver270')
-    persistantData.delete('message-502')
-    persistantData.delete('message-503')
-    persistantData.delete('message-504')
-    persistantData.delete('new-update-first-run')
-    persistantData.delete('keepBackups')
-    persistantData.delete('testBackups')
-    persistantData.delete('skipConfirm')
-    persistantData.delete('transMsg')
-    persistantData.delete('delCopyFolder')
-    persistantData.delete('known-issues-58')
-    persistantData.delete('known-issues-59')
+    // Do not delete legacy fields: callers may still rely on them.
   } else {
     updateNotesCallback()
   }
@@ -404,7 +378,7 @@ function secretMenu () {
   <h2>Secret Menu</h2>
   </header>
   <div class="w3-container">
-  <button class="w3-btn w3-red w3-hover-yellow w3-ripple w3-border" onclick="persistantData.delete('lang')">Reset Language Variable</button>
+  <button class="w3-btn w3-red w3-hover-yellow w3-ripple w3-border" onclick="persistantData.set('lang', 'english').then(() => location.reload()).catch(error => console.error(error))">Reset Language Variable</button>
   <button class="w3-btn w3-green w3-hover-indigo w3-ripple w3-border" onclick="$('#instAll').click()">Install All</button>
   <button class="w3-btn w3-deep-orange w3-hover-red w3-ripple w3-border" onclick="$('#uninstAll').click()">Uninstall All</button>
   <button class="w3-btn w3-blue w3-hover-yellow w3-ripple w3-border" onclick="openDlFolder()">Downloaded Files</button>
