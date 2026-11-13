@@ -4,7 +4,7 @@
   <h1 id="mzd-title" class="mazda"> MZD-AIO-TI + CASDK
     <small class="w3-text-black"><i>v</i>{{appVer}}</small>
   </h1>
-  <span id="update-ready" class="w3-hide"><a href="" onclick="ipc.send('update-and-restart')" class="w3-btn w3-padding w3-hover-text-light-green">UPDATE &amp; RESTART</a></span>
+  <span id="update-ready" class="w3-hide"><a href="" onclick="disabledFeature()" class="w3-btn w3-padding w3-hover-text-light-green">UPDATE &amp; RESTART</a></span>
   <button id="helpDropBtn" onclick="helpDropdown()" class="w3-btn w3-large helphints">
     <span class="icon-cog3"></span>
   </button>
@@ -61,7 +61,7 @@
             </div>
           </div>
           <div class="footer centered">
-            <a onclick="shell.openExternal('mailto:Trez@MazdaTweaks.com?Subject=AIO%20+%20CASDK%20Contact')">
+            <a onclick="openApprovedExternal('mailto:Trez@MazdaTweaks.com?Subject=AIO%20+%20CASDK%20Contact')">
               <p>Contact Trezdog44</p>
               <h6><i class="fa fa-envelope">
               </i>

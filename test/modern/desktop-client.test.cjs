@@ -70,7 +70,7 @@ test('actual controller waits for saves, surfaces failures, preserves loaded sel
  const gate=deferred(); const alerts=[];let compiled=0, controller
  const chain={controller:(name,fn)=>{if(name==='MainCtrl')controller=fn;return chain},config:()=>chain,directive:()=>chain,filter:()=>chain}
  const jquery=()=>new Proxy({}, {get:()=>()=>jquery()})
- const context=vm.createContext({console,msgLangs:[],angular:{module:()=>chain},$:jquery,setTimeout:()=>{},ipc:{on:()=>{}},bootbox:{alert:value=>alerts.push(value)},closeHelpDrop:()=>{},updateBgModal:()=>{},getParameterByName:()=>'',buildTweakFile:()=>{compiled++},dialog:{showErrorBox:()=>{}},desktopData:{app:{name:'MZD',version:'2.8.6'},paths:{desktop:'/Desktop'}}})
+ const context=vm.createContext({console,msgLangs:[],angular:{module:()=>chain},$:jquery,setTimeout:()=>{},uiEvents:{on:()=>{}},aio:{compile:()=>{compiled++}},bootbox:{alert:value=>alerts.push(value)},closeHelpDrop:()=>{},updateBgModal:()=>{},getParameterByName:()=>'',buildTweakFile:()=>{compiled++},dialog:{showErrorBox:()=>{}},desktopData:{app:{name:'MZD',version:'2.8.6'},paths:{desktop:'/Desktop'}}})
  vm.runInContext(fs.readFileSync('app/assets/js/desktop-client.js','utf8'),context)
  const browser=context.MZDDesktop
  // Objects entering this VM are cloned as Electron IPC would clone them.

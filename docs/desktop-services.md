@@ -158,3 +158,87 @@ unchanged. Secondary service capabilities do **not** grant preferences access.
 - Renderer-close preference flush/cache refresh, translator/speedo storage,
   compiler file access and all startup/runtime verification remain 4B/5 work.
 - Keep vehicle/bundled payload bytes intact. AngularJS remains unsupported.
+
+## Task 4B runtime integration
+
+`main.js` now composes the reviewed services with `native-adapters.js`. All
+windows are main-owned, use the fixed `preload.js`, `nodeIntegration:false`,
+`contextIsolation:true`, `sandbox:true`, and deny child windows/webviews and
+navigation away from their exact owned file. Native menu zoom roles replace
+renderer Menu/remote access. Automatic legacy services are not initialized;
+non-local subresource requests are denied. No renderer compiler is loaded.
+
+The primary `index.html` owns the preference protocol and all reviewed
+`SERVICE_INTERFACE` capabilities. The independent `info.html` receives only
+`secondary-bootstrap`; `joiner.html` receives only `secondary-bootstrap`,
+`joined-image`, `save-joined-image`, and `background-rotator`. A secondary page
+cannot acquire preference access by navigating to index.html. Scoped handlers
+validate owner, exact main frame/file, capability, and positional argument count
+before calling native adapters. Renderer subscriptions strip Electron events and
+return exact unsubscribe functions.
+
+Additional preload-to-`aio:` channel mapping (arguments in parentheses):
+
+| Preload method | Channel suffix |
+|---|---|
+| resetWindow() / openScreen(screen) | reset-window / open-screen |
+| secondaryBootstrap() | secondary-bootstrap |
+| selectBuiltinImage(name) | builtin-image |
+| chooseJoinedImage() / saveJoinedImage(pngDataUrl) | joined-image / save-joined-image |
+| setBackgroundRotator(images, seconds) | background-rotator |
+| chooseTheme() / revealFolder(name) | choose-theme / reveal-folder |
+| readClipboardText() / writeClipboardText(text) | clipboard-read / clipboard-write |
+| loadEditor(name) / saveEditor(name, value) | editor-load / editor-save |
+| importEditor(name) / exportEditor(name, value) | editor-import / editor-export |
+| loadMessages() / saveMessages(language, messages) / resetMessages() | messages-load / messages-save / messages-reset |
+| compile() | compile (explicit Task 5 rejection, no generated output) |
+| acknowledgeFlush(token, errorOrNull) | flush-ack |
+
+Names are fixed enums, never paths: editor `translator|speedo`, screen
+`info|joiner`, built-in image `background|offscreen|album|transparent`, and reveal
+folder `output|defaults|downloads|apk`. Theme selection yields an opaque token and
+label, not a general path capability. PNG data is decoded by nativeImage; joined
+images retain their dimensions. New persistence/staging is outside bundled
+payloads. Main emits `aio:image-staged` for primary preview updates and
+`aio:preferences-changed` for native output/rotator changes; browser caches flush
+queued writes before refresh. Close/quit requests wait for a token-bound renderer
+flush acknowledgement and the visits write before destruction; timeout or failure
+leaves the window open rather than reporting saved state.
+
+### Hidden isolated test gate
+
+`MZD_AIO_TEST=1` requires explicit isolated `MZD_AIO_TEST_USER_DATA` and
+`MZD_AIO_TEST_OUTPUT`. It never shows windows, menus/tray or native choosers, reads
+real preferences, enumerates drives, prints or launches external applications.
+Chooser cancellation is the only test dialog result; native decode/staging and
+native binding load are real, while enumeration/printing/external effects reject.
+Main-owned test CDP captures uncaught exceptions and unhandled rejections before
+page load. The smoke deliberately injects distinguishable diagnostics to prove
+that collection works, then removes only those injected markers.
+
+Use `scripts/run-hidden-isolated.py SCRATCH WORKDIR COMMAND [ARGS...]` only with
+a reviewed dedicated copy below Hermes scratch. Before Electron, run that runner
+with `node test/modern/isolation-probe.cjs PRIVATE_CHECKOUT/package.json` and
+require EPERM for private read, outside write and external connect plus successful
+scratch writes. Its mandatory outer macOS deny-default profile scrubs credentials,
+permits scratch-only writes, denies private home reads/external network, and has
+narrow process-specific Electron mach/AppKit/font allowances. CPU/file/process/time
+limits and a process-group RSS watchdog bound execution and cleanup.
+
+The user approved **test-only** `--no-sandbox` injection by this runner for the
+scratch Electron executable, because Chromium cannot reinitialize an inner
+sandbox inside this outer macOS sandbox. Ordinary app startup/build configuration
+contains no disabling switch and retains sandbox:true. This smoke does **not**
+validate production Chromium inner-sandbox enforcement or visual rendering.
+The final success requires exit 0 **and** `HIDDEN_SMOKE_PASS` plus the generated
+`hidden-smoke.json`, not exit 0 alone.
+
+### Explicit later gates
+
+Task 5 must extract the preserved legacy `build-tweaks.js` into main-owned compiler
+operations, consume staged images/theme grants, rotator metadata and edited XML,
+restore compile-only file replacement/deletion/appender/copy/unzip/line-ending/log
+steps, and verify generated package correctness. No Node restoration is allowed.
+Task 6 owns packaged resource layout/native provisioning and final packaging gates.
+AngularJS and existing permissive inline/eval CSP remain maintenance/security debt;
+this integration is not a claim of complete application or vehicle readiness.

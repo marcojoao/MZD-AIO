@@ -70,6 +70,7 @@
     let tail = Promise.resolve()
     let failure
     const cache = {}
+    const replace = {}
     const flush = () => tail.then(() => { if (failure) throw failure })
     function enqueue (name, entries) {
       const result = tail.then(async () => {
@@ -84,6 +85,7 @@
     for (const name of stores) {
       if (!own(data.preferences, name) || !data.preferences[name] || Array.isArray(data.preferences[name])) throw new Error('Missing preference store: ' + name)
       let state = clone(data.preferences[name])
+      replace[name] = value => { state = clone(value) }
       cache[name] = {
         get (key, fallback) { const result = lookup(state, key); return clone(result.found ? result.value : fallback) },
         has (key) { return lookup(state, key).found },
@@ -103,7 +105,15 @@
         flush
       }
     }
-    return { stores: cache, flush }
+    async function refresh (name) {
+      if (!stores.includes(name)) throw Error('Invalid preference store')
+      await flush()
+      const value = await api.getPreferences(name)
+      validateValue(value)
+      if (!value || Array.isArray(value) || typeof value !== 'object') throw Error('Invalid preference object')
+      replace[name](value)
+    }
+    return { stores: cache, flush, refresh }
   }
   const startups = new WeakMap()
   function startDesktop (window, initialize = () => {}) {
@@ -118,6 +128,17 @@
       }
       const client = createDesktopClient(data, window.aio, report)
       Object.assign(window, { desktopData: data, desktopClient: client, settings: client.stores['aio-data'], persistantData: client.stores['aio-persist'], dataObj: client.stores['aio-data-obj'], lastView: client.stores['aio-last'], userThemes: client.stores['user-themes'], casdkApps: client.stores.casdk, speedoSave: client.stores.MZD_Speedometer, lang: data.language.name, langObj: data.language.messages, langDef: data.language.defaults, translateSchema: data.language.schema })
+      if (window.aio.onFlushRequest) window.aio.onFlushRequest(async token => {
+        let error = null
+        try { await client.flush() } catch (failure) { error = failure.message; report(failure) }
+        await window.aio.acknowledgeFlush(token, error)
+      })
+      if (window.aio.onPreferencesChanged) window.aio.onPreferencesChanged(async store => {
+        try {
+          await client.refresh(store)
+          if (store === 'aio-persist' && window.uiEvents) window.uiEvents.emit('set-copy-loc', client.stores[store].get('copyFolderLocation'))
+        } catch (error) { report(error) }
+      })
       await initialize(data)
       window.angular.bootstrap(document, ['AIO'])
     }).catch(async error => {

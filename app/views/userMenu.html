@@ -25,9 +25,9 @@
     <li class="w3-dropdown-click">
       <a id='' onclick="dropDownMenu('downloads')" href="">Downloads <span class="icon-caret-down"></span></a>
       <div id="downloads" class="w3-dropdown-content w3-white w3-card-4">
-        <a href="" onclick="$(this).parent().removeClass('w3-show');ipc.send('update-downloaded');"><i class="icon-download"></i> Download Update</a>
-        <a href="" class="download" onclick="$(this).parent().removeClass('w3-show');ipc.send('download-aio-files','color-schemes');$(this).hide();"><i class="icon-download"></i> Download Color Scheme Files (105MB)</a>
-        <a href="" onclick="$(this).parent().removeClass('w3-show');ipc.send('download-aio-files','speedcam-patch');$(this).hide();"><i class="icon-download"></i> Download Speedcam Patch Files (200MB)</a>
+        <a href="" onclick="$(this).parent().removeClass('w3-show');disabledFeature();"><i class="icon-download"></i> Download Update</a>
+        <a href="" class="download" onclick="$(this).parent().removeClass('w3-show');disabledFeature();$(this).hide();"><i class="icon-download"></i> Download Color Scheme Files (105MB)</a>
+        <a href="" onclick="$(this).parent().removeClass('w3-show');disabledFeature();$(this).hide();"><i class="icon-download"></i> Download Speedcam Patch Files (200MB)</a>
       </div>
     </li>
     <li class="w3-dropdown-click">
@@ -44,7 +44,7 @@
       <div id="help" class="w3-dropdown-content w3-white w3-card-4">
         <a href="" onclick="$(this).parent().removeClass('w3-show');externalLink('mazdatweaks')"><i class="icon-help"></i> MazdaTweaks.com</a>
         <a href="" onclick="$(this).parent().removeClass('w3-show');showNotification('testing','Testing, Testing, 1.. 2.. 3....',5);"><i class="icon-globe2"></i> JSON Translate Web Test</a>
-        <a href="" onclick="$(this).parent().removeClass('w3-show');ipc.send('open-joiner-window');"><i class="icon-cube"></i> Local Json Test</a>
+        <a href="" onclick="$(this).parent().removeClass('w3-show');nativeAction(aio.openScreen('joiner'));"><i class="icon-cube"></i> Local Json Test</a>
       </div>
     </li>
     <li class="menu-icons menulock" style="width:40px;margin-right:20px;margin-left:-5px" data-toggle="tooltip" data-placement="bottom" title="Lock/Unlock Menu Bar" onclick="$('.hideNav').toggleClass('showNav');saveMenuLock()">

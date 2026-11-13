@@ -470,7 +470,7 @@
           $('body, .hideNav, .w3-overlay').addClass('showNav')
         }
         if (persistantData.has('FW')) {
-          ipc.emit('aio-info')
+          uiEvents.emit('aio-info')
         }
       })
       $(function () {
@@ -551,23 +551,23 @@
         }, 500)
         updateBgModal()
       }
-      ipc.on('custom-theme', (event, theme) => {
+      uiEvents.on('custom-theme', (theme) => {
         $scope.user.customTheme = theme
         $scope.$apply()
       })
-      ipc.on('save-options', () => {
+      uiEvents.on('save-options', () => {
         $scope.saveOps()
       })
-      ipc.on('load-options', () => {
+      uiEvents.on('load-options', () => {
         $scope.loadOps()
       })
-      ipc.on('load-last', () => {
+      uiEvents.on('load-last', () => {
         $scope.loadLast()
       })
-      ipc.on('rmCpDir', (op) => {
+      uiEvents.on('rmCpDir', (op) => {
         $scope.rmCpDir = op
       })
-      ipc.on('set-copy-loc', (loc) => {
+      uiEvents.on('set-copy-loc', (loc) => {
         $scope.user.copydir = loc
         snackbar(`Save _copy_to_usb folder to ${persistantData.get('copyFolderLocation')}`, 3)
       })
@@ -655,13 +655,12 @@
           // console.log( `Load was performed.` )
         })
       }
-      ipc.on('start-compile', function () {
+      uiEvents.on('start-compile', function () {
         $scope.startCompile()
       })
       $scope.startRestoreCompile = function () {
         bootbox.hideAll()
         closeHelpDrop()
-        remote.BrowserWindow.fromId(1).focus()
         if (!$scope.user.restore.full) { return }
         var msg = '<center>This script will completely remove all tweaks installed by AIO.\n'
         if ($scope.user.restore.delBackups) { msg += `<h3 style='width:100%;text-align:center;'>*** YOU HAVE CHOSEN TO DELETE ALL BACKUP FILES. ***</h3><br><h4>BY CONTINUING, YOU ARE ACKNOWLEDGING THAT YOU UNDERSTAND THE IMPLICATIONS OF PERFORMING THIS ACTION.</h4>` }
@@ -697,7 +696,6 @@
       $scope.startAutorunCompile = function () {
         bootbox.hideAll()
         closeHelpDrop()
-        remote.BrowserWindow.fromId(1).focus()
         var armsg = '<center>CMU-Autorun Scripts<br>Installer/Uninstaller For Autorun Scripts.<br>'
         armsg += '</center>'
         armsg += '<a href class="autorunHelp" onclick="autoHelp()"><span class="icon-question2"></span></a>'
@@ -758,13 +756,12 @@
           return
         }
         // check for downloaded files
-        var spfiles = fs.existsSync(`${app.getPath('userData')}/speedcam-patch/`)
-        var csfiles = fs.existsSync(`${app.getPath('userData')}/color-schemes/`)
+        var csfiles = hasColorFiles
         if ($scope.user.mainOps.includes(3)) {
           if (!csfiles) {
             bootbox.alert({
               title: `Please Download Color Scheme Files Before Compiling`,
-              message: `<a href="" class="w3-btn" onclick="ipc.send('download-aio-files','color-schemes')">Download Color Scheme Files</a>`
+              message: `<a href="" class="w3-btn" onclick="disabledFeature()">Download Color Scheme Files</a>`
             })
             return
           }
@@ -828,14 +825,7 @@
               setTimeout(function () {
                 introJs().hideHints()
               }, 4000)
-              rimraf(`${tmpdir}`, (err) => {
-                if (err) {
-                  let m = `Error occured while deleting old '_copy_to_usb' folder: ${err}\n Try closing all other running programs and folders before compiling.`
-                  aioLog(m, m)
-                  return
-                }
-                $scope.compileTweaks()
-              })
+              $scope.compileTweaks()
             }
           }
         })
@@ -849,8 +839,7 @@
           if ($scope.user.options.includes(19)) $scope.saveSpeedoOps()
           await lastView.set($scope.user)
           await lastView.flush()
-          $('#compileButton, #compileAutorun, .btn-group, .btn-group~*, .checkAutorun, .handle').hide()
-          buildTweakFile($scope.user)
+          await aio.compile()
         } catch (error) {
           bootbox.alert({ message: 'Could not compile: ' + error.message, size: 'small' })
         }

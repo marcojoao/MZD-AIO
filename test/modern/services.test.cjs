@@ -12,12 +12,13 @@ function fixture (t, overrides = {}) {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   for (const name of ['home', 'images', 'output']) fs.mkdirSync(path.join(root, name))
   const calls = []
+  const dialogCalls = []
   const chosen = path.join(root, 'chosen.jpg')
   fs.writeFileSync(chosen, 'inert source fixture')
   const config = {
     policyOptions: { home: path.join(root, 'home') },
     imageParent: path.join(root, 'images'),
-    dialogs: { chooseOutputDirectory: async () => path.join(root, 'output'), chooseImage: async () => chosen },
+    dialogs: { chooseOutputDirectory: async () => { dialogCalls.push('output'); return path.join(root, 'output') }, chooseImage: async kind => { dialogCalls.push(kind); return chosen } },
     images: { resizeToPng: async request => { calls.push(['resize', request]); return Buffer.from('inert PNG adapter fixture') } },
     files: { writePng: async request => {
       calls.push(['write', { directory: request.directory, filename: request.filename }])
@@ -29,7 +30,7 @@ function fixture (t, overrides = {}) {
     external: { open: async url => { calls.push(['external', url]) } },
     ...overrides
   }
-  return { root, chosen, calls, config, service: createDesktopServices(config) }
+  return { root, chosen, calls, dialogCalls, config, service: createDesktopServices(config) }
 }
 
 test('cancelled choosers return null without creating output or changing existing authorization', async t => {
@@ -216,6 +217,7 @@ test('exported protocol matches actual registration; every endpoint rejects fore
     contents.mainFrame.url = 'file:///fixture/app/index.html'
   }
   assert.deepEqual(f.calls, [])
+  assert.deepEqual(f.dialogCalls, [], 'rejected IPC must never show a chooser')
 })
 
 test('valid local IPC delegates to validated services; malformed payload never reaches adapters', async t => {
@@ -229,11 +231,14 @@ test('valid local IPC delegates to validated services; malformed payload never r
   await invoke('setFullscreen', false)
   await invoke('print')
   await invoke('openExternal', 'https://github.com')
+  assert.deepEqual(f.dialogCalls, ['output', 'album'])
+  const dialogCount = f.dialogCalls.length
   const count = f.calls.length
   for (const [method, value] of [['chooseImage', 'bad'], ['resizeImage', { kind: 'album', source: '/etc/passwd' }], ['setFullscreen', 'yes'], ['openExternal', 'http://github.com']]) await assert.rejects(invoke(method, value))
   await assert.rejects(invoke('downloadLegacy'), /disabled/i)
   await assert.rejects(invoke('updateLegacy'), /disabled/i)
   assert.equal(f.calls.length, count)
+  assert.equal(f.dialogCalls.length, dialogCount)
 })
 
 test('secondary scope registers only explicitly granted capabilities and fails closed on bad scope', async t => {

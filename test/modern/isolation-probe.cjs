@@ -9,6 +9,8 @@ test('sandbox scrubs credentials and denies credential reads', () => {
   assert.equal(process.env.GH_TOKEN, undefined)
   assert.equal(process.env.SSH_AUTH_SOCK, undefined)
   assert.throws(() => fs.readFileSync(process.argv[2]), { code: 'EPERM' })
+  // The caller supplies a harmless private-home fixture path, never real secrets.
+  if (process.argv[3]) assert.throws(() => fs.readFileSync(process.argv[3]), { code: 'EPERM' })
 })
 test('sandbox denies writes outside scratch but permits scratch', () => {
   assert.throws(() => fs.writeFileSync('/private/tmp/mzd-aio-denied-probe', 'no'), { code: 'EPERM' })

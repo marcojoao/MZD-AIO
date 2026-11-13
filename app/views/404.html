@@ -166,21 +166,19 @@
       <a class="card" href="../index.html">Reload AIO</a>
   </div>
   <script>
-          require('electron').ipcRenderer.on('app-error', (event, message) => {
-            document.getElementById('errorMessage').innerHTML = message;
-          });
+          document.getElementById('errorMessage').textContent = 'The requested local page could not be loaded.';
         </script>
   </section>
   <footer>
     <span class='footer-donate'>
-      <a href="" onclick='shell.openExternal("https://paypal.me/Trevelopment")'>
+      <a href="" onclick='openApprovedExternal("https://paypal.me/Trevelopment")'>
         <span class='icon-money'></span> Donate</a>
     </span>
     <span class="copyright">
-      <span class="copyleft" title="Copyleft" onclick="shell.openExternal('https://Trevelopment.com')" style="cursor:pointer">&copy; 2017 <a href="" onclick="externalLink('trevelopment')" title="Copyleft Trevelopment">Trevelopment.</a></span>
+      <span class="copyleft" title="Copyleft" onclick="openApprovedExternal('https://Trevelopment.com')" style="cursor:pointer">&copy; 2017 <a href="" onclick="externalLink('trevelopment')" title="Copyleft Trevelopment">Trevelopment.</a></span>
     </span>
     <span class="contact-form">
-      <span class='icon-contact_mail'></span><a onclick="shell.openExternal('mailto:Trez@MazdaTweaks.com?Subject=Contact%20Error!!!!')" data-featherlight="ajax" title="Contact The Developer" id="feedback">Feedback</a></span>
+      <span class='icon-contact_mail'></span><a onclick="openApprovedExternal('mailto:Trez@MazdaTweaks.com?Subject=Contact%20Error!!!!')" data-featherlight="ajax" title="Contact The Developer" id="feedback">Feedback</a></span>
   </footer>
 </body>
 

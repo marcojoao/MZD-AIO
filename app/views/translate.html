@@ -33,7 +33,7 @@
     <button id='restore'></button>
     <button id='import'></button>
     <span class="submissionInstructions">{{trans[4].label}}
-      <a href="" ng-click="shell.openExternal('mailto:aio@mazdatweaks.com?subject={{newLanguage}}%20Translation&body=Hi%20Trez,%0A%0AAttached%20is%20a%20translation%20of%20MZD-AIO-TI%20into%20{{newLanguage}}.')">
+      <a href="" ng-click="openApprovedExternal('mailto:aio@mazdatweaks.com?subject={{newLanguage}}%20Translation&body=Hi%20Trez,%0A%0AAttached%20is%20a%20translation%20of%20MZD-AIO-TI%20into%20{{newLanguage}}.')">
         <b>aio@mazdatweaks.com</b>
       </a> or open a
       <a href="" onclick="externalLink('pullrequest')">
@@ -50,6 +50,6 @@
     </div>
   </div>
   <div style="display:none">
-    <button id="cpyBtn" class="w3-btn w3-hover-text-black w3-blue w3-hover-green w3-padding-large" onclick="clipboard.writeText($(this).val())">Copy</button>
+    <button id="cpyBtn" class="w3-btn w3-hover-text-black w3-blue w3-hover-green w3-padding-large" onclick="aio.writeClipboardText($(this).val())">Copy</button>
   </div>
   <span id="SourceMode" class="w3-large w3-padding w3-text-black w3-btn w3-indigo w3-hover-yellow" onclick="$('.sceditor-button-source').click()" style="">Toggle Source</span>

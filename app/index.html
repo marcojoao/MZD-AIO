@@ -77,14 +77,14 @@
         <div id="window" class="w3-dropdown-content w3-white w3-card-4">
           <a onclick="toggleFullScreen()"><i class="icon-fullscreen"></i>{{menu.fullscreen.label}}</a>
           <a ng-click="uncheckAll()"><i class="icon-reload"></i>{{menu.resetoptions.label}}</a>
-          <a onclick="ipc.send('reset-window-size')"><i class="icon-new-window"></i>{{menu.centerwindow.label}}</a>
+          <a onclick="nativeAction(aio.resetWindow())"><i class="icon-new-window"></i>{{menu.centerwindow.label}}</a>
           <a onclick="location.reload();"><i class="icon-spin"></i>{{menu.reloadapp.label}}</a>
         </div>
       </li>
       <li class="w3-dropdown-click"> <!-- Download Menu -->
         <a id="" onclick="dropDownMenu('downloads')">{{menu.download.label}} <span class="icon-caret-down"></span></a>
         <div id="downloads" class="w3-dropdown-content w3-white w3-card-4">
-          <a class="download" onclick="ipc.send('download-aio-files','color-schemes');$(this).hide();"><i class="icon-colorize"></i> {{menu.dlcolors.label}} (105MB)</a>
+          <a class="download" onclick="disabledFeature();$(this).hide();"><i class="icon-colorize"></i> {{menu.dlcolors.label}} (105MB)</a>
           <a class="download" onclick="externalLink('nots');"><i class="icon-stop_screen_share"></i> Disable Touchscreen All The Time</a>
           <a class="download" onclick="externalLink('unwifi');"><i class="icon-portable_wifi_off"></i> Uninstall WiFi AP</a>
           <a class="download" onclick="externalLink('cmu-autorun');"><i class="icon-directions_run"></i> CMU-Autorun Repository</a>
@@ -124,7 +124,7 @@
       <li class="menu-icons" style="margin: 0px 0px 0px 8px;padding-top: 5px;padding-bottom: 3px;" data-toggle="tooltip" data-placement="bottom" title="{{menu.fullscreen.label}}" onclick="toggleFullScreen()">
         <span class="icon-fullscreen" style="padding: 8px;"></span>
       </li>
-      <li id="resetWindowSize" class="menu-icons" style="border-radius:50px;padding:4px;" data-toggle="tooltip" data-placement="bottom" title="{{menu.centerwindow.toolTip}}" onclick="ipc.send('reset-window-size')">
+      <li id="resetWindowSize" class="menu-icons" style="border-radius:50px;padding:4px;" data-toggle="tooltip" data-placement="bottom" title="{{menu.centerwindow.toolTip}}" onclick="nativeAction(aio.resetWindow())">
         <span class="icon-new-window" style="margin:6px"></span>
       </li>
       <li class="menu-icons w3-hover-spin" style="border-radius:50px;padding:4px" data-toggle="tooltip" data-placement="bottom" title="{{menu.reloadapp.label}}" onclick="location.reload()">
@@ -244,11 +244,10 @@
 <script type="text/javascript">
   window.desktopStartup = MZDDesktop.startDesktop(window, async function () {
     await MZDDesktop.loadDesktopScripts(window, [
+      './assets/js/events.js',
       './assets/js/index.js',
       './assets/js/messages-settings.js',
-      './assets/js/build-tweaks.js',
-      './assets/js/notifications.js',
-      './assets/js/events.js'
+      './assets/js/notifications.js'
     ])
     $('.slide-out-div').tabSlideOut({
       tabHandle: '.handle', // class of the element that will become your tab
@@ -266,31 +265,7 @@
       console.debug(navigator.onLine ? 'online' : 'offline')
     }
     firstTimeVisit()
-    if (false) { // Remote translation downloads are disabled by default.
-      var translateUrl = "https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"
-      $.getScript(translateUrl)
-        .done(function(script, textStatus) {
-          console.debug(textStatus)
-        })
-        .fail(function(jqxhr, settings, e) {
-          console.debug(e)
-          $(() => {
-            setTimeout(() => {
-              $(".translator+div").html("<h4>Connection Error</h4>")
-            }, 2000)
-          })
-        })
-
-      function googleTranslateElementInit() {
-        new google.translate.TranslateElement({
-          pageLanguage: 'en',
-          includedLanguages: 'ar,bg,cs,da,de,es,fa,fi,fr,ga,haw,hi,hu,id,is,it,iw,ja,jv,ko,ku,la,lo,lt,lv,mn,ms,mt,ne,nl,no,pa,pl,pt,ro,ru,sk,sl,sm,sr,sv,th,tl,tr,uk,vi,zh-CN,zh-TW',
-          layout: google.translate.TranslateElement.InlineLayout.SIMPLE
-        }, 'google_translate_element')
-      }
-    } else {
-      $(function(){setTimeout(()=>{$(".translator+div").html("<h4>Offline</h4>")},2000)})
-    }
+    $('.translator+div').text('Online translation is disabled.')
     $(() => {
       isDev ? $('.dev-menu-item').show() : $('.dev-menu-item').remove()
       $('.w3-dropdown-content a').click(function() {

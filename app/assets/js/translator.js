@@ -1,11 +1,13 @@
 /* jshint esversion:6, -W117 */
-var translateData = new Config({ 'name': 'aio-translate-save' })
+;(async function () {
+let savedEditor = await aio.loadEditor('translator')
+const translateData = { has: () => savedEditor !== null, get: () => savedEditor, async set (_, value) { await aio.saveEditor('translator', value); savedEditor = value } }
 document.getElementById('submit').innerHTML = langObj.translatorWindow[14].label
 
 // Hook up the Restore to Default button
-document.getElementById('restore').addEventListener('click', function () {
-  editor.setValue(JSON.parse(fs.readFileSync(`${langPath}`, { encoding: 'utf8' })))
-  translateData.set('data', editor.getValue())
+document.getElementById('restore').addEventListener('click', async function () {
+  editor.setValue(desktopData.language.messages)
+  try { await translateData.set('data', editor.getValue()) } catch (error) { bootbox.alert('Could not save editor: ' + error.message) }
 })
 document.getElementById('restore').innerHTML = langObj.translatorWindow[1].label + ` (${lang})`
 document.getElementById('loadLang').innerHTML = `${lang}`
@@ -20,7 +22,7 @@ var startingValue
 if (translateData.has('data')) {
   startingValue = translateData.get('data')
 } else {
-  startingValue = JSON.parse(fs.readFileSync(`${langPath}`, { encoding: 'utf8' }))
+  startingValue = desktopData.language.messages
 }
 
 // Initialize the editor
@@ -61,45 +63,12 @@ JSONEditor.plugins.sceditor.resizeMaxWidth = '800'
 
 // JSONEditor.defaults.editors..options.hidden = true
 // Hook up the submit button to log to the console
-document.getElementById('submit').addEventListener('click', function () {
-  fileName = document.getElementById('newFileName').value.toLowerCase()
-  // Get the value from the editor
-  // console.log(JSON.stringify(editor.getValue()))
-  console.log(fileName)
-  fs.writeFile(`${app.getPath('documents')}/${fileName}.aio.json`, JSON.stringify(editor.getValue()), function () {
-    bootbox.alert({
-      title: `${fileName}.aio.json Saved`,
-      message: `${fileName}.aio.json ${langObj.translatorWindow[7].label} <button class="w3-btn" onclick="shell.openItem(path.normalize(path.join('file://', app.getPath('documents'))))">${langObj.translatorWindow[8].label}</button><button class="w3-btn" onclick="shell.openItem(path.normalize(path.join('file://', app.getPath('documents'), '${fileName}.aio.json')))">Open ${fileName} JSON File</button>`
-    })
-  })
+document.getElementById('submit').addEventListener('click', async function () {
+  try { const result = await aio.exportEditor('translator', editor.getValue()); if (result !== null) bootbox.alert('JSON export saved.') } catch (error) { bootbox.alert(error.message) }
 })
-document.getElementById('import').addEventListener('click', function () {
-  // var jsonData
-  dialog.showOpenDialog({
-    title: `MZD-AIO-TI | ${langObj.translatorWindow[11].label}.`,
-    properties: ['openFile'],
-    defaultPath: app.getPath('documents'),
-    filters: [
-      { name: 'AIO Translation File', extensions: ['json'] }
-    ]
-  }, function (files) {
-    if (files) {
-      jsonData = fs.readFileSync(files[0], { encoding: 'utf8' })
-      editor.setValue(JSON.parse(jsonData))
-    }
-  })
+document.getElementById('import').addEventListener('click', async function () {
+  try { const value = await aio.importEditor('translator'); if (value !== null) editor.setValue(value) } catch (error) { bootbox.alert(error.message) }
 })
-// ipc.send('open-translate-file')
-ipc.on('translate-file', function (data) {
-  if (data) {
-    console.log(data[0])
-    console.log(data[0].toString())
-    var loadSaved = fs.readFileSync(data[0], { encoding: 'utf8' })
-    console.log(loadSaved)
-    editor.setValue(JSON.parse(loadSaved))
-  }
-})
-
 document.getElementById('import').innerHTML = langObj.translatorWindow[9].label
 
 function gotoTranslator () {
@@ -119,7 +88,7 @@ editor.disable()
 // Hook up the validation indicator to update its
 // status whenever the editor changes
 var changes = 0 // Save on every 3 changes
-editor.on('change', function () {
+editor.on('change', async function () {
   // Get an array of errors from the validator
   var errors = editor.validate()
 
@@ -133,17 +102,19 @@ editor.on('change', function () {
     indicator.style.color = 'green'
     changes++
     if (changes > 3) {
-      translateData.set('data', editor.getValue())
-      $('#autosave').show()
-      $('#autosave').fadeOut(5000)
       changes = 0
+      try {
+        await translateData.set('data', editor.getValue())
+        $('#autosave').show()
+        $('#autosave').fadeOut(5000)
+      } catch (error) { bootbox.alert('Could not save editor: ' + error.message) }
     }
     // indicator.textContent = "valid"
   }
 })
 $(function () {
-  $('input, textarea').dblclick(function () {
-    editor.getEditor($(this).parent().parent().attr('data-schemapath')).setValue(clipboard.readText())
+  $('input, textarea').dblclick(async function () {
+    editor.getEditor($(this).parent().parent().attr('data-schemapath')).setValue(await aio.readClipboardText())
   })
   $('input, textarea').click(function () {
     $('#cpyBtn').insertAfter($(this)) // $(this).val()
@@ -158,3 +129,5 @@ $(function () {
   $('iframe').css('max-width', '100%')
   $('#loading').hide()
 })
+
+})().catch(error => bootbox.alert(error.message))

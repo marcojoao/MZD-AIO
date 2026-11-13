@@ -1,5 +1,5 @@
 /* jshint esversion:6, -W033, -W117, -W097, -W116 */
-var vardir = `${app.getPath('userData')}/background/`
+var getBackground
 var style = 1
 var JoinedHeight = 0,
   JoinedWidth = 0,
@@ -99,21 +99,13 @@ function selectFiles () {
   numberOfImages()
 }
 
-function joinedPhoto (photo) {
-  var outImage = document.getElementById('imgJoined')
-  if(photo) {
-    fs.copyFile(photo, `${getBackground}`, (err) => {
-      if (err) {
-        console.log(err)
-        window.close()
-        return
-      }
-      $('#Panel2').show()
-      $('#Panel1').hide()
-      outImage.src = `${getBackground}`
-      $('#imgJoined').attr('src', outImage.src)
-    })
-  }
+function joinedPhoto (result) {
+  if (!result) return
+  getBackground = result.destination
+  $('#Panel2').show()
+  $('#Panel1').hide()
+  $('#imgJoined').attr('src', getBackground + '?' + Date.now())
+  $('#imgJoinedLink').attr('href', getBackground)
 }
 
 function JoinPhotos () {
@@ -193,19 +185,9 @@ function JoinPhotos () {
   // $("#hdnImageData").val(canvas.toDataURL('image/png'));
   // saveCanvas(canvas, 'background', 'png');
   /* Write the joined image directly to the File System as background.png */
-  fs.writeFile(`${getBackground}`,
-    nativeImage.createFromDataURL(canvas.toDataURL('image/png')).toPNG(),
-    (err) => {
-      if (err) {
-        console.log(err)
-        window.close()
-        return
-      }
-      $('#Panel2').show()
-      $('#Panel1').hide()
-      outImage.src = `${getBackground}`
-      $('#imgJoined').attr('src', `${getBackground}`)
-    })
+  aio.saveJoinedImage(canvas.toDataURL('image/png')).then(joinedPhoto).catch(error => {
+    document.getElementById('joinError').textContent = error.message
+  })
 }
 
 function changeStyle (s) {

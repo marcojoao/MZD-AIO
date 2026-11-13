@@ -11,37 +11,14 @@
 ** ************************************************************************** **
 \* ************************************************************************** */
 /* jshint esversion:8, -W033, -W117, -W097, -W116 */
-const { electron, nativeImage, remote, clipboard, shell } = require('electron')
-// Metadata comes only from the completed bootstrap, never electron.remote.
-const app = Object.freeze({
-  getName: () => desktopData.app.name,
-  getVersion: () => desktopData.app.version,
-  getPath: name => desktopData.paths[name],
-  getAppPath: () => desktopData.paths.home
-})
-// Remaining native window/dialog callers are migrated in Task 4.
-const { BrowserWindow, dialog } = remote || {}
-const _ = require('lodash')
-const fs = require('fs')
-const ipc = require('electron').ipcRenderer
-// Preference caches are installed on window only after aio.bootstrap succeeds.
-const { writeFileSync } = require('fs')
-const isDev = require('electron-is-dev')
-const path = require('path')
-const os = require('os')
-const appender = require('appender') // Appends the tweak files syncronously
-const crlf = require('crlf') // Converts line endings (from CRLF to LF)
-const copydir = require('copy-dir') // Copys full directories
-const drivelist = require('drivelist') // Module that gets the list of available USB drives
-const extract = require('extract-zip') // For Unzipping
-const mkdirp = require('mkdirp') // Equiv of Unix command mkdir -p
-const rimraf = require('rimraf') // Equiv of Unix command rm -rf
+const app = Object.freeze({getName: () => desktopData.app.name, getVersion: () => desktopData.app.version, getPath: name => desktopData.paths[name], getAppPath: () => desktopData.paths.home})
+const isDev = false
 var copyFolderLocation = persistantData.get('copyFolderLocation', app.getPath('desktop'))
 var visits = persistantData.get('visits', 0)
 var hasSpeedCamFiles = false // fs.existsSync(`${app.getPath('userData')}/speedcam-patch/`)
 // Language and app/path metadata are supplied by desktopData.
 var colordir = `${app.getPath('userData')}/color-schemes/` // Location of downloaded color theme files (userData)
-var hasColorFiles = fs.existsSync(`${colordir}`)
+var hasColorFiles = false
 var approot = desktopData.paths.home
 var builddir = `${approot}/files/tweaks/` // Location of tweak files (as .txt files)
 var logFileName = 'MZD_LOG' // Name of log file (without extension)
@@ -87,11 +64,6 @@ function saveMenuLock () {
   persistantData.set('menuLock', !persistantData.get('menuLock'))
   $('body, .hideNav, .w3-overlay').toggleClass('showNav')
 }
-/* Create Temporary Folder To Hold Images Before Compiling */
-if (!fs.existsSync(varDir)) {
-  mkdirp.sync(varDir)
-}
-
 function helpMessageFreeze (item) {
   $(item).children().toggleClass('w3-show')
 }
@@ -100,9 +72,7 @@ function runAAPatcher (apk) {
   // require('./assets/js/aapatcher.js')(apk)
 }
 
-function runInstallCSApp () {
-  require('./assets/js/installCS.js')()
-}
+function runInstallCSApp () { disabledFeature() }
 /* Clock for Background preview */
 function startTime () {
   var today = new Date()
@@ -121,59 +91,27 @@ function checkTime (i) {
   return i
 }
 
-ipc.on('open-copy-folder', openCopyFolder)
-
-function openCopyFolder () {
-  var openCopy = `${persistantData.get('copyFolderLocation', copyFolderLocation)}/_copy_to_usb/`
-  if (!fs.existsSync(openCopy)) {
-    mkdirp.sync(openCopy)
-  }
-  if (!shell.openItem(openCopy)) {
-    bootbox.alert({
-      message: `"${copyFolderLocation.replace('config', '')}" Does Not Exist.  Click "Start Compilation" to Run The Tweak Builder and Create the _copy_to_usb Folder.`
-    })
-  }
-}
-
-function openApkFolder () {
-  shell.openItem(path.normalize(path.join('file://', __dirname, '../../castscreenApp/')))
-}
-
-function openDlFolder () {
-  shell.openItem(path.normalize(path.join(app.getPath('userData'), 'color-schemes/')))
-}
-
-function openDefaultFolder () {
-  shell.openItem(path.normalize(path.join('file://', __dirname, '../background-images/default/')))
-}
-
+function openCopyFolder () { return nativeAction(aio.revealFolder('output')) }
+function openApkFolder () { return nativeAction(aio.revealFolder('apk')) }
+function openDlFolder () { return nativeAction(aio.revealFolder('downloads')) }
+function openDefaultFolder () { return nativeAction(aio.revealFolder('defaults')) }
 function autoHelp () {
   $.featherlight('views/autoHelp.htm', { closeSpeed: 500, variant: 'autoHelpBox' })
 }
 
 function myStance () {
-  ipc.send('reset-window-size')
+  nativeAction(aio.resetWindow())
   // $.featherlight('views/stance.htm', { closeSpeed: 2000, variant: 'myStance', afterClose: updateNotesCallback })
   updateNotesCallback()
 }
 
-function announcement () {
-  if (persistantData.get('visits', 0) % 20 === 0) {
-	  showAnnouncement()
-  }
-}
-
+function announcement () {}
 function dataCheck () {
   // Preserve unknown and legacy preference keys during modernization.
   localStorage.setItem(`dat${updateVer}`, true)
 }
 
-function showAnnouncement () {
-  if (persistantData.get('anon', false)) {
-    $.featherlight(aioURL, { closeSpeed: 1000, variant: 'announcementWindow' })
-  }
-}
-
+function showAnnouncement () { disabledFeature() }
 function hideAnnouncement (anonNum) {
   $('.communicationFile').hide()
   $.featherlight.close()
@@ -292,7 +230,8 @@ function dropDownMenu (id) {
 }
 
 function toggleFullScreen () {
-  remote.BrowserWindow.getFocusedWindow().setFullScreen(!remote.BrowserWindow.getFocusedWindow().isFullScreen())
+  window.aioFullscreen = !window.aioFullscreen
+  nativeAction(aio.setFullscreen(window.aioFullscreen))
   $('.icon-fullscreen').toggleClass('icon-fullscreen-exit')
 }
 // Extra Options Togglers
@@ -315,7 +254,7 @@ function toggleAllOps () {
 }
 
 function externalLink (link) {
-  shell.openExternal(`http://trevelopment.win/${link}`)
+  disabledFeature() // Legacy redirect hosts are intentionally not contacted.
 }
 
 function cleanArray (actual) {
@@ -334,27 +273,8 @@ function copyCode (x) {
   if (copyText) snackbar('Copied "' + $(x).val() + '" to clipboard')
 }
 
-function donate () {
-  shell.openExternal('http://trevelopment.win/donate')
-}
-// Returns list of USB Drives
-async function getUSBDrives () {
-  var disks = []
-  var dsklst = await drivelist.list()
-  drivelist.list(function (error, dsklst) {
-    if (error) {
-      console.error('Error finding USB drives')
-    }
-    for (var i = 0; i < dsklst.length; i++) {
-      if (!dsklst[i].system) {
-        // console.debug(disks[i]);console.debug(disks[i].name);console.debug(disks[i].description)
-        disks.push({ 'name': dsklst[i].name, 'desc': dsklst[i].description, 'mp': dsklst[i].mountpoint })
-      }
-    }
-    return disks
-  })
-}
-
+function donate () { disabledFeature() }
+async function getUSBDrives () { return aio.listDrives() }
 function getParameterByName (name, url) {
   if (!url) url = window.location.href
   url = url.toLowerCase() // This is just to avoid case sensitiveness
@@ -393,14 +313,7 @@ function toggleOverDraws () {
   $('.spdConfigInst').click(function () { $('#autorunCheck').toggle() })
 }
 
-function writeRotatorVars (imgs) {
-  if (imgs > 1) {
-    fs.writeFileSync(`${varDir}/bg-rotator.txt`, `BG_STEPS=${imgs}\nBG_SECONDS=${imgs * $('#bgRotatorSeconds').val()}\nBG_SEC_EACH=${$('#bgRotatorSeconds').val()}\nBG_WIDTH=${imgs * 800}`)
-  } else {
-    fs.writeFileSync(`${varDir}/bg-rotator.txt`, '')
-  }
-}
-
+function writeRotatorVars (imgs) { settings.set('backgroundRotator', { images: imgs, seconds: Number($('#bgRotatorSeconds').val()) }) }
 function saveAIOLogHTML () {
   var a = document.body.appendChild(document.createElement('a'))
   a.download = 'AIO_Log.html'
@@ -408,10 +321,7 @@ function saveAIOLogHTML () {
   a.click()
 }
 
-function checkForUpdate (ver) {
-  $.featherlight(`https://aio.trevelopment.com/update.php?ver=${updateVer}`, { closeSpeed: 100, variant: 'checkForUpdate' })
-}
-
+function checkForUpdate () { disabledFeature() }
 function formatDateCustom (dateFormatType) {
   var currentTime = new Date()
   var dateStr = null
@@ -483,26 +393,7 @@ function numberReplacer (key, value) {
   return value
 }
 
-function replaceInFile (someFile, toReplace, replacement, callback) {
-  fs.readFile(someFile, 'utf8', function (err, data) {
-    if (err) {
-      err = err.toString()
-      dialog.showErrorBox('ERROR', err)
-      return console.error(err)
-    }
-    var re = new RegExp(toReplace, 'g')
-    var result = data.replace(re, replacement)
-    fs.writeFile(someFile, result, 'utf8', function (err) {
-      if (err) {
-        err = err.toString()
-        dialog.showErrorBox('ERROR', err)
-        return console.error(err)
-      }
-      if (typeof callback === 'function') callback()
-    })
-  })
-}
-
+// Compiler-only file replacement remains in Task 5; no renderer filesystem access.
 function updateBgModal () {
   $('#infotnmtBG,#modalimg').attr('src', `${getBackground}`)
 }
