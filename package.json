@@ -20,7 +20,7 @@
     "url": "https://github.com/Trevelopment/MZD-AIO/issues"
   },
   "engines": {
-    "node": "^13"
+    "node": "22.22.3"
   },
   "keywords": [
     "Mazda",
@@ -31,7 +31,7 @@
     "angular"
   ],
   "scripts": {
-    "test": "npm start",
+    "test": "npm run test:unit",
     "unit": "standard && mocha test/unit --recursive",
     "integration": "standard && mocha test/integration --recursive",
     "coverage": "istanbul cover node_modules/.bin/_mocha -- --recursive",
@@ -57,8 +57,10 @@
     "build": "electron-builder",
     "release": "electron-builder",
     "postbuild": "node build/target.js --clean",
-    "xinstall": "cd app && ncu -u --packageFile package.json && ncu -a --packageFile package.json && npm i && cd .. && ncu -u --packageFile package.json && ncu -a --packageFile package.json && npm i",
-    "postinstall": "electron-builder install-app-deps && cd app && sh ../node_modules/.bin/electron-rebuild && cd .. && sh ./node_modules/.bin/electron-rebuild"
+    "test:unit": "node --test test/modern/*.test.cjs",
+    "test:smoke": "playwright test test/modern/smoke.spec.cjs --workers=1",
+    "verify:payloads": "node scripts/verify-payloads.cjs",
+    "pack:mac:arm64": "electron-builder --mac --arm64 --dir --publish never"
   },
   "standard": {
     "globals": [
@@ -81,9 +83,7 @@
       "langObj",
       "persistantData"
     ],
-    "ignore": [
-
-    ]
+    "ignore": []
   },
   "jshintConfig": {
     "esversion": 8
@@ -102,13 +102,9 @@
     "compression": "maximum",
     "mac": {
       "category": "public.app-category.entertainment",
-      "publish": {
-        "provider": "bintray",
-        "owner": "trevelopment",
-        "repo": "MZD-AIO-TI",
-        "package": "MZD-AIO-MAC",
-        "user": "trevelopment"
-      }
+      "target": [
+        "dir"
+      ]
     },
     "dmg": {
       "iconSize": 120,
@@ -131,66 +127,35 @@
       "category": "Development",
       "executableName": "AIO",
       "synopsis": "Mazda All In One Tweaks Installer",
-      "target": "deb",
-      "publish": {
-        "provider": "bintray",
-        "owner": "aio",
-        "repo": "aio",
-        "package": "aio",
-        "user": "Trezdog44"
-      }
+      "target": "deb"
     },
     "win": {
       "target": [
         "nsis"
-      ],
-      "publish": {
-        "provider": "bintray",
-        "owner": "aio",
-        "repo": "aio",
-        "package": "aio",
-        "user": "Trezdog44"
-      }
+      ]
     },
     "directories": {
-      "output": "releases"
+      "output": "releases",
+      "app": "app"
     },
     "nsis": {
       "artifactName": "${productName}_Setup_${version}.${ext}"
     },
-    "forceCodeSigning": false
+    "forceCodeSigning": false,
+    "publish": []
   },
   "devDependencies": {
-    "async": "^3.2.0",
-    "chai": "^4.2.0",
-    "chai-as-promised": "^7.1.1",
-    "dependency-check": "^4.1.0",
-    "devtron": "^1",
-    "electron": "^6.1.9",
-    "electron-builder": "^21.2.0",
-    "electron-debug": "^3.0.1",
-    "electron-is-dev": "^1.2.0",
-    "electron-rebuild": "^1.10.1",
-    "mocha": "^6.2.3",
-    "rimraf": "^3.0.2",
-    "shelljs": "^0.8.3",
-    "spectron": "^8.0.0",
-    "standard": "^13.1.0"
+    "async": "3.2.0",
+    "chai": "4.2.0",
+    "chai-as-promised": "7.1.1",
+    "dependency-check": "4.1.0",
+    "electron": "45.3.1",
+    "electron-builder": "26.18.0",
+    "mocha": "6.2.3",
+    "rimraf": "3.0.2",
+    "shelljs": "0.8.3",
+    "standard": "13.1.0",
+    "@playwright/test": "1.65.0"
   },
-  "dependencies": {
-    "appender": "0.0.2",
-    "bluebird-lst": "^1.0.9",
-    "copy-dir": "^1.2.0",
-    "crlf": "^1.1.1",
-    "drivelist": "^8.0.10",
-    "electron-context-menu": "^0.14.0",
-    "electron-image-resize": "^1.2.4",
-    "electron-store": "^4.0.0",
-    "extract-zip": "^1.7.0",
-    "global": "^4.3.2",
-    "jquery": "^3.4.1",
-    "mkdirp": "^0.5.5",
-    "node-abi": "^2.15.0",
-    "xml2js": "^0.4.23"
-  }
+  "packageManager": "npm@10.9.8"
 }

@@ -34,7 +34,6 @@
     "appender": "^0.0.2",
     "copy-dir": "^1.2.0",
     "crlf": "^1.1.1",
-    "devtron": "^1",
     "drivelist": "^8.0.9",
     "electron-context-menu": "^0.14.0",
     "electron-debug": "^3.0.1",
@@ -48,10 +47,12 @@
     "mkdirp": "^0.5.1",
     "node-abi": "^2.13.0",
     "rimraf": "^3.0.0",
-    "xml2js": "^0.4.22"
+    "xml2js": "^0.4.22",
+    "bluebird-lst": "^1.0.9",
+    "global": "^4.3.2",
+    "jquery": "^3.4.1"
   },
   "engines": {
-    "node": "^13"
-  },
-  "electronVersion": "^6"
+    "node": "22.22.3"
+  }
 }
