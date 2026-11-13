@@ -268,6 +268,7 @@
         { bootLogo: 'Trans End (Default)', logo: 11 }
       ]
       $scope.replyLangs = msgLangs
+      messagesReady.then(() => $scope.$evalAsync()).catch(() => {})
       $scope.getMsgsForLang = function () {
         getMsgsForLang($scope.user.replyMsgLang)
         $scope.replyMsgs = currLangMsgs
@@ -276,7 +277,7 @@
         }
       }
       $scope.savePresetMsgs = function () {
-        rebuildMessageXml($scope.user.replyMsgLang, $scope.replyMsgs)
+        return persistMessageChange(() => rebuildMessageXml($scope.user.replyMsgLang, $scope.replyMsgs))
       }
       $scope.checkDuplicatePos = function (inputArray) {
         var lastSeenDuplicate,

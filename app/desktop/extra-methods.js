@@ -16,7 +16,21 @@ function createExtraMethods ({ electron, preferences, userData, imageParent, res
     }
     return null
   }
-  const saveEditor = async (name, value) => { const file = editorName(name); object(value); await writeAtomic(path.join(userData, 'editors'), file + '.json', JSON.stringify({ data: value })); return value }
+  // Queue by exact persistent target. A rejected request stays rejected to its
+  // caller, but does not poison later requests (or the scoped IPC drain).
+  const tails = new Map()
+  function ordered (target, operation) {
+    const result = (tails.get(target) || Promise.resolve()).then(operation)
+    const tail = result.catch(() => {})
+    tails.set(target, tail)
+    tail.then(() => { if (tails.get(target) === tail) tails.delete(target) })
+    return result
+  }
+  const saveEditor = async (name, value) => {
+    const file = editorName(name)
+    const bytes = JSON.stringify({ data: object(value) })
+    return ordered('editor:' + file, async () => { await writeAtomic(path.join(userData, 'editors'), file + '.json', bytes); return JSON.parse(bytes).data })
+  }
   const choose = async (scope, options) => { if (testMode) return null; const result = await electron.dialog.showOpenDialog(scope.win(), options); return result.canceled ? null : result.filePaths[0] || null }
   async function stageImage (source, kind, resize = true) {
     const image = electron.nativeImage.createFromBuffer(await readRegular(source))
@@ -36,10 +50,14 @@ function createExtraMethods ({ electron, preferences, userData, imageParent, res
   const messageFile = path.join(resources, 'files/tweaks/config/message_replies/jci/settings/configurations/blm_msg-system.xml')
   const messageDir = path.join(userData, 'messages')
   const xml = require('xml2js')
+  // Current edits override read-only legacy edits, then bundled defaults. Reset
+  // writes defaults to the current target, so a legacy copy cannot reappear.
+  const legacyMessageFile = path.join(userData, 'background/message_replies/jci/settings/configurations/blm_msg-system.xml')
   async function loadMessages () {
-    let bytes
-    try { bytes = await readRegular(path.join(messageDir, 'blm_msg-system.xml')) } catch (e) { if (e.code !== 'ENOENT') throw e; bytes = await readRegular(messageFile) }
-    return xml.parseStringPromise(bytes)
+    for (const file of [path.join(messageDir, 'blm_msg-system.xml'), legacyMessageFile, messageFile]) {
+      try { return await xml.parseStringPromise(await readRegular(file)) } catch (e) { if (e.code !== 'ENOENT') throw e }
+    }
+    throw Error('Message defaults missing')
   }
   const method = (count, run) => ({ count, run })
   return {
@@ -85,12 +103,15 @@ function createExtraMethods ({ electron, preferences, userData, imageParent, res
     'messages-load': method(0, () => loadMessages()),
     'messages-save': method(2, async (_, language, messages) => {
       if (typeof language !== 'string' || !Array.isArray(messages) || messages.some(x => typeof x !== 'string' || x.length > 4096)) throw Error('Invalid messages')
-      const data = await loadMessages(); const node = data.Node.Node[0].Node.find(x => x.$.key === language)
-      if (!node || node.Node.length !== messages.length) throw Error('Invalid message language/count')
-      node.Node.forEach((x, i) => { x.$.value = messages[i] })
-      await writeAtomic(messageDir, 'blm_msg-system.xml', new xml.Builder({ headless: true }).buildObject(data))
+      messages = messages.slice()
+      return ordered('messages', async () => {
+        const data = await loadMessages(); const node = data.Node.Node[0].Node.find(x => x.$.key === language)
+        if (!node || node.Node.length !== messages.length) throw Error('Invalid message language/count')
+        node.Node.forEach((x, i) => { x.$.value = messages[i] })
+        await writeAtomic(messageDir, 'blm_msg-system.xml', new xml.Builder({ headless: true }).buildObject(data))
+      })
     }),
-    'messages-reset': method(0, async () => { await fs.unlink(path.join(messageDir, 'blm_msg-system.xml')).catch(e => { if (e.code !== 'ENOENT') throw e }); return loadMessages() }),
+    'messages-reset': method(0, () => ordered('messages', async () => { const bytes = await readRegular(messageFile); const data = await xml.parseStringPromise(bytes); await writeAtomic(messageDir, 'blm_msg-system.xml', bytes); return data })),
     compile: method(0, async () => { throw Error('Compilation is not yet migrated to the main process (Task 5); no files were generated.') }),
     'flush-ack': method(2, (scope, token, error) => { if (typeof token !== 'string' || !(error === null || typeof error === 'string')) throw Error('Invalid flush acknowledgement'); requestFlushAck(scope, token, error) })
   }

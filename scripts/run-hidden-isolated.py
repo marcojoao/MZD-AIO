@@ -5,6 +5,7 @@ User-approved test-only inner-sandbox workaround, mandatory outer OS isolation.
 Probe the generated outer profile before launching Electron. Production is unchanged.
 """
 import os
+import fcntl
 from pathlib import Path
 import resource
 import signal
@@ -20,6 +21,16 @@ def main():
     approved = (home / '.hermes/cache/scratch').resolve()
     if not scratch.is_relative_to(approved) or scratch == approved:
         raise SystemExit('SCRATCH must be a dedicated directory below Hermes scratch')
+    # Chromium's macOS singleton socket temp root is outside this sandbox.
+    # Keep one hidden execution per scratch, without permitting outside writes.
+    # O_NOFOLLOW prevents following a replaced lock leaf; flock is released by
+    # the OS on every exit, including watchdog/interruption failures.
+    lock_fd = os.open(scratch / '.hidden-execution.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(lock_fd)
+        raise SystemExit('Hidden scratch already in use')
     if not cwd.is_relative_to(scratch):
         raise SystemExit('WORKDIR must be within SCRATCH')
     for name in ('home', 'tmp', 'cache'):

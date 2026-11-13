@@ -118,16 +118,32 @@ async function start () {
   })
   primary.on('closed', () => { primary = null; if (!testMode) app.quit() })
   Menu.setApplicationMenu(testMode ? null : Menu.buildFromTemplate([
+    { label: pjson.productName, submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'quit' }] },
     { label: 'File', submenu: [
-      { label: 'Save selections', click: () => primary.webContents.send('aio:menu-action', 'save-options') },
-      { label: 'Load selections', click: () => primary.webContents.send('aio:menu-action', 'load-options') },
+      { label: 'Save selections', accelerator: 'CmdOrCtrl+S', click: () => primary?.webContents.send('aio:menu-action', 'save-options') },
+      { label: 'Load selections', accelerator: 'CmdOrCtrl+L', click: () => primary?.webContents.send('aio:menu-action', 'load-options') },
+      { label: 'Load Last Compile', accelerator: 'CmdOrCtrl+Shift+L', click: () => primary?.webContents.send('aio:menu-action', 'load-last') },
       { label: 'Choose output folder', click: () => service.chooseOutputDirectory().catch(reportError) },
       { label: 'Print', click: () => service.print().catch(reportError) }, { role: 'close' }] },
+    { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
     { label: 'View', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
     { label: 'Help', submenu: [{ label: 'About', click: () => openScreen('info').catch(reportError) }, { label: 'Image joiner', click: () => openScreen('joiner').catch(reportError) }] }
   ]))
   await primary.loadFile(indexPath)
   if (testMode) await require('./desktop/hidden-smoke')({ app, primary, openScreen, children, service, imageParent, runtimeErrors, output: process.env.MZD_AIO_TEST_OUTPUT })
 }
-app.whenReady().then(start).catch(error => { reportError(error); app.exit(1) })
-app.on('window-all-closed', () => { if (!testMode) app.quit() })
+// The hidden launcher owns a scratch-only OS file lock: Chromium's native
+// singleton socket directory is denied by the outer sandbox. Production always
+// uses Electron's lock, before any migration/write/window creation.
+if (!testMode && !app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!testMode && primary) {
+      if (primary.isMinimized()) primary.restore()
+      primary.focus()
+    }
+  })
+  app.whenReady().then(start).catch(error => { reportError(error); app.exit(1) })
+  app.on('window-all-closed', () => { if (!testMode) app.quit() })
+}

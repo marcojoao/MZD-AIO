@@ -40,8 +40,19 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   assert.equal(secondary.require, 'undefined'); assert.equal(secondary.process, 'undefined')
   await assert.rejects(info.webContents.executeJavaScript(`aio.getPreferences('aio-persist')`), /sender\/frame/i)
   await assert.rejects(info.webContents.executeJavaScript(`aio.chooseImage('album')`), /capability|sender/i)
-  await openScreen('joiner')
+  // Exercise the immutable payload's actual action, not the alternate menu.
+  const retainedJoiner = await evaluate(`(async () => {
+    const host = document.createElement('div'); host.hidden = true
+    host.innerHTML = await (await fetch('opts/bgoptions.htm')).text(); document.body.append(host)
+    migratePayloadControls()
+    const button = [...host.querySelectorAll('[onclick]')].find(x => x.getAttribute('onclick').includes("openScreen('joiner')"))
+    if (!button) throw Error('Retained joiner control not normalized')
+    const normalized = button.getAttribute('onclick'); button.click(); host.remove(); return normalized
+  })()`)
+  for (let attempt = 0; !children.has('joiner') && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+  assert.ok(children.has('joiner'), 'Retained control did not open joiner')
   const joiner = children.get('joiner')
+  if (joiner.webContents.isLoading()) await new Promise(resolve => joiner.webContents.once('did-finish-load', resolve))
   const joined = await joiner.webContents.executeJavaScript(`window.secondaryStartup.then(() => ({require:typeof require, process:typeof process, ready:!!angular.element(document).injector()}))`)
   assert.equal(joined.require, 'undefined'); assert.equal(joined.process, 'undefined'); assert.equal(joined.ready, true)
   assert.equal(joiner.isVisible(), false)
@@ -56,6 +67,33 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   assert.equal(await evaluate(`settings.get('stagedImages.background')`), joinedImage.destination)
   assert.deepEqual(await evaluate(`settings.get('backgroundRotator')`), { images: 2, seconds: 60 })
   assert.equal(primary.isVisible(), false); assert.equal(info.isVisible(), false)
+  // Hidden-only fixture: fetch/compile fixed bundled payload bytes, never user HTML.
+  const delayedMessages = await evaluate(`(async () => {
+    const injector = angular.element(document).injector(), scope = injector.get('$rootScope').$new()
+    scope.user = { replyMsgLang: 0 }
+    const [messagesSource, controller, html, data] = await Promise.all([
+      fetch('assets/js/messages-settings.js').then(x => x.text()), fetch('controllers/home.js').then(x => x.text()),
+      fetch('opts/11options.htm').then(x => x.text()), aio.loadMessages()
+    ])
+    let release
+    const delayed = new Promise(resolve => { release = resolve })
+    const binding = controller.slice(controller.indexOf('      $scope.replyLangs ='), controller.indexOf('      $scope.checkDuplicatePos ='))
+    const initialize = new Function('aio', '$scope', messagesSource + '\\n' + binding + '\\nreturn messagesReady')
+    const ready = initialize({ loadMessages: () => delayed }, scope)
+    const host = document.createElement('div'); host.hidden = true; host.innerHTML = html; document.body.append(host)
+    injector.get('$compile')(host)(scope); scope.$digest(); migratePayloadControls()
+    const select = host.querySelector('select'), before = select.options.length
+    release(data); await ready
+    await new Promise(resolve => scope.$evalAsync(() => scope.$$postDigest(resolve)))
+    const after = select.options.length, count = scope.replyLangs.length
+    const saveNormalized = !host.querySelector('[ng-click="savePresetMsgs()"]').hasAttribute('onclick')
+    const resetNormalized = [...host.querySelectorAll('[onclick]')].some(x => x.getAttribute('onclick') === 'resetMsgLang()')
+    scope.$destroy(); host.remove()
+    return { before, after, count, saveNormalized, resetNormalized }
+  })()`)
+  assert.ok(delayedMessages.count > 0)
+  assert.ok(delayedMessages.after > delayedMessages.before, 'Delayed languages did not render in retained dropdown')
+  assert.equal(delayedMessages.saveNormalized, true); assert.equal(delayedMessages.resetNormalized, true)
   await evaluate(`location.hash = '#/translate'`)
   let translatorReady = false
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -64,6 +102,16 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
     await new Promise(resolve => setTimeout(resolve, 100))
   }
   assert.equal(translatorReady, true, 'Translator editor did not initialize')
+  // Dispatch only: verify retained editor handlers do not intercept macOS text
+  // shortcuts. Never touch the user's native clipboard or focus a window.
+  const editorShortcuts = await evaluate(`(() => {
+    const input = document.querySelector('#editor_holder input, #editor_holder textarea')
+    return ['x', 'c', 'v', 'a'].map(key => {
+      const event = new KeyboardEvent('keydown', { key, metaKey: true, bubbles: true, cancelable: true })
+      input.dispatchEvent(event); return { key, prevented: event.defaultPrevented }
+    })
+  })()`)
+  assert.ok(editorShortcuts.every(event => !event.prevented))
   // Allow route scripts to finish, so asynchronous errors cannot hide behind script load events.
   await new Promise(resolve => setTimeout(resolve, 1000))
   assert.deepEqual(runtimeErrors, [])
@@ -74,7 +122,7 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   await new Promise(resolve => primary.once('closed', resolve))
   const saved = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'preferences/aio-persist.json'), 'utf8'))
   assert.equal(saved.closeSmoke, 'flushed')
-  await fs.writeFile(path.join(output, 'hidden-smoke.json'), JSON.stringify({ state, bridge, secondary, joined, joinedImage, translatorReady, runtimeInstrumentationVerified: true, nativeImage: builtin, foreignNavigationRejected: prevented, closeFlushed: true, runtimeErrors }, null, 2))
+  await fs.writeFile(path.join(output, 'hidden-smoke.json'), JSON.stringify({ state, bridge, retainedJoiner, delayedMessages, editorShortcuts, secondary, joined, joinedImage, translatorReady, runtimeInstrumentationVerified: true, nativeImage: builtin, foreignNavigationRejected: prevented, closeFlushed: true, runtimeErrors }, null, 2))
   console.log('HIDDEN_SMOKE_PASS')
   app.exit(0)
 }

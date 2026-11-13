@@ -48,10 +48,14 @@ function migratePayloadControls () {
     'open-file-bg': "selectImage('background')", 'open-file-default': "selectBuiltinImage('background')",
     'open-offscreen-bg': "selectImage('offscreen')", 'open-offscreen-default': "selectBuiltinImage('offscreen')",
     'default-blnk-art': "selectBuiltinImage('album')", 'transparent-blnk-art': "selectBuiltinImage('transparent')",
-    'open-file-blnk-art': "selectImage('album')", 'bg-no-resize': 'selectJoinedImage()', 'theme-jci': 'selectTheme()'
+    'open-file-blnk-art': "selectImage('album')", 'bg-no-resize': 'selectJoinedImage()', 'theme-jci': 'selectTheme()',
+    'open-joiner-window': "nativeAction(aio.openScreen('joiner'))"
   }
   for (const element of document.querySelectorAll('[onclick]')) {
     const old = element.getAttribute('onclick')
+    // Retained message controls delegate hiding/error state to awaited handlers.
+    if (element.getAttribute('ng-click') === 'savePresetMsgs()') { element.removeAttribute('onclick'); continue }
+    if (old === "resetMsgLang();$('#presetMessageEditor').fadeOut()") { element.setAttribute('onclick', 'resetMsgLang()'); continue }
     const next = old.replace(/ipc\.send\('([^']+)'\)/g, (call, name) => replacements[name] || 'disabledFeature()')
     if (next !== old) element.setAttribute('onclick', next)
   }

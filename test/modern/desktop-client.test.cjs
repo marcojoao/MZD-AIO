@@ -70,7 +70,7 @@ test('actual controller waits for saves, surfaces failures, preserves loaded sel
  const gate=deferred(); const alerts=[];let compiled=0, controller
  const chain={controller:(name,fn)=>{if(name==='MainCtrl')controller=fn;return chain},config:()=>chain,directive:()=>chain,filter:()=>chain}
  const jquery=()=>new Proxy({}, {get:()=>()=>jquery()})
- const context=vm.createContext({console,msgLangs:[],angular:{module:()=>chain},$:jquery,setTimeout:()=>{},uiEvents:{on:()=>{}},aio:{compile:()=>{compiled++}},bootbox:{alert:value=>alerts.push(value)},closeHelpDrop:()=>{},updateBgModal:()=>{},getParameterByName:()=>'',buildTweakFile:()=>{compiled++},dialog:{showErrorBox:()=>{}},desktopData:{app:{name:'MZD',version:'2.8.6'},paths:{desktop:'/Desktop'}}})
+ const context=vm.createContext({console,msgLangs:[],messagesReady:Promise.resolve(),angular:{module:()=>chain},$:jquery,setTimeout:()=>{},uiEvents:{on:()=>{}},aio:{compile:()=>{compiled++}},bootbox:{alert:value=>alerts.push(value)},closeHelpDrop:()=>{},updateBgModal:()=>{},getParameterByName:()=>'',buildTweakFile:()=>{compiled++},dialog:{showErrorBox:()=>{}},desktopData:{app:{name:'MZD',version:'2.8.6'},paths:{desktop:'/Desktop'}}})
  vm.runInContext(fs.readFileSync('app/assets/js/desktop-client.js','utf8'),context)
  const browser=context.MZDDesktop
  // Objects entering this VM are cloned as Electron IPC would clone them.
@@ -78,7 +78,7 @@ test('actual controller waits for saves, surfaces failures, preserves loaded sel
  vm.runInContext('var client=MZDDesktop.createDesktopClient(JSON.parse(initial),api); var settings=client.stores["aio-data"], persistantData=client.stores["aio-persist"], lastView=client.stores["aio-last"],speedoSave=client.stores.MZD_Speedometer; var lang="english",langObj={}; var app={getName:()=>"MZD",getVersion:()=>"2.8.6"}',context)
  for(const name of ['spdValues.js','audioSourceList.js'])vm.runInContext(fs.readFileSync('app/assets/js/'+name,'utf8'),context)
  vm.runInContext(fs.readFileSync('app/controllers/home.js','utf8'),context)
- const scope={$on:()=>{},$watch:()=>{},$apply:()=>{}};controller(scope,{}, {},{path:()=> '/'},()=>x=>x)
+ const scope={$on:()=>{},$watch:()=>{},$apply:()=>{},$evalAsync:()=>{}};controller(scope,{}, {},{path:()=> '/'},()=>x=>x)
  const saving=scope.saveOps();await new Promise(setImmediate);assert.equal(alerts.length,0,'no success before disk acknowledgement')
  gate.resolve();await saving;assert.equal(alerts.at(-1).message,'Options Saved!')
  scope.loadOps();assert.deepEqual(Array.from(scope.user.options),[20]);assert.equal(scope.user.statusbar.opacity,0)
