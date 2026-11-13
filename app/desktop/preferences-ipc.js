@@ -1,14 +1,7 @@
 'use strict'
-const { fileURLToPath } = require('node:url')
-const path = require('node:path')
+const { createSenderGuard } = require('./ipc-sender')
 function registerPreferenceIpc ({ ipcMain, service, getWebContents, indexPath }) {
-  function guard (event) {
-    const contents = getWebContents()
-    if (!contents || event.sender !== contents || !event.senderFrame || event.senderFrame !== contents.mainFrame) throw new Error('Invalid preference sender/frame')
-    const url = new URL(event.senderFrame.url)
-    if (url.protocol !== 'file:' || url.host || path.resolve(fileURLToPath(url)) !== path.resolve(indexPath)) throw new Error('Invalid preference sender/frame URL')
-    return url
-  }
+  const guard = createSenderGuard({ getWebContents, indexPath })
   const handle = (channel, count, action) => ipcMain.handle(channel, async (event, ...args) => {
     const url = guard(event)
     if (args.length !== count) throw new Error('Invalid preference arguments')
