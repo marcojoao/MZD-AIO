@@ -835,14 +835,43 @@
         })
       }
 
-      $scope.compileTweaks = async function () {
+      $scope.compileTweaks = async function (selectedUser, apps) {
+        const user = selectedUser || $scope.user
+        if ($scope.compiling) return
+        $scope.compiling = true
+        $scope.compileResult = null
+        $scope.compileError = null
+        const unsubscribe = aio.onProgress(event => $scope.$applyAsync(() => { $scope.compileProgress = event }))
         try {
-          if ($scope.user.options.includes(19)) $scope.saveSpeedoOps()
-          await lastView.set($scope.user)
+          if (user.autorun.autoWIFI && !user.wifi) {
+            const ask = (title, inputType) => new Promise(resolve => bootbox.prompt({ title, inputType, callback: resolve }))
+            const ssid = await ask('WiFi AP network name (SSID)', 'text')
+            const password = ssid === null ? null : await ask('WiFi AP password (8–63 characters)', 'password')
+            if (ssid === null || password === null) throw Error('Compilation cancelled; WiFi AP was not configured')
+            user.wifi = { ssid, password }
+          }
+          if (user.options.includes(19)) { $scope.saveSpeedoOps(); await speedoSave.flush() }
+          for (const [key, value] of Object.entries({ keepBackups: user.backups.org, testBackups: user.backups.test, skipConfirm: user.backups.skipconfirm, apps2resources: user.backups.apps2resources })) settings.set(key, value)
+          await settings.flush()
+          // WiFi credentials are compile-only, not saved with the user's selections.
+          const savedUser = JSON.parse(angular.toJson(user)); delete savedUser.wifi
+          await lastView.set(savedUser)
           await lastView.flush()
-          await aio.compile()
+          const result = await buildTweakFile(user, apps)
+          $scope.compileResult = result; $scope.$applyAsync()
+          const message = document.createElement('div')
+          message.textContent = 'Package generated: ' + result.outputDirectory + '. Manually copy its contents to USB. No physical USB copy was performed.'
+          bootbox.alert({ message, size: 'small' })
+          return result
         } catch (error) {
-          bootbox.alert({ message: 'Could not compile: ' + error.message, size: 'small' })
+          $scope.compileError = error.message; $scope.compileResult = null; $scope.$applyAsync()
+          const message = document.createElement('div'); message.textContent = 'Could not compile: ' + error.message
+          bootbox.alert({ message, size: 'small' })
+          return null
+        } finally {
+          delete user.wifi
+          unsubscribe()
+          $scope.compiling = false; $scope.$applyAsync()
         }
       }
     })
@@ -1044,12 +1073,12 @@
             if (!result) {
               user.casdk.region = 'eu'
             }
-            buildTweakFile(user, $scope.apps)
+            $scope.compileTweaks(user, $scope.apps)
           }
         })
       } else {
         user.casdkAppsOnly = appsOnly
-        buildTweakFile(user, $scope.apps)
+        $scope.compileTweaks(user, $scope.apps)
       }
     }
   }

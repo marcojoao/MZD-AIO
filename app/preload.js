@@ -38,7 +38,7 @@ contextBridge.exposeInMainWorld('aio', Object.freeze({
   loadMessages: () => ipcRenderer.invoke('aio:messages-load'),
   saveMessages: (language, messages) => ipcRenderer.invoke('aio:messages-save', language, messages),
   resetMessages: () => ipcRenderer.invoke('aio:messages-reset'),
-  compile: () => ipcRenderer.invoke('aio:compile'),
+  compile: request => ipcRenderer.invoke('aio:compile', request),
   onProgress: callback => subscribe('aio:progress', callback),
   onMenuAction: callback => subscribe('aio:menu-action', callback),
   onPreferencesChanged: callback => subscribe('aio:preferences-changed', callback),

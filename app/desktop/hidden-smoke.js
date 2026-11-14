@@ -29,7 +29,35 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   assert.match(primary.webContents.getURL(), /#\/background$/)
   assert.equal(await evaluate(`aio.chooseImage('background')`), null)
   await assert.rejects(evaluate(`aio.chooseImage('invalid')`), /kind/i)
-  await assert.rejects(evaluate(`aio.compile()`), /Task 5/)
+  await assert.rejects(evaluate(`aio.compile({ options: { options: [999] }, outputParent: '/invalid' })`), /allowed|Invalid/)
+  const compilation = await evaluate(`(async () => {
+    const scope = angular.element(document.body).scope()
+    scope.user.options = [5]; scope.user.mainOps = [0, 4, 7]
+    await scope.compileTweaks()
+    return { result: scope.compileResult, error: scope.compileError }
+  })()`)
+  assert.ok(compilation.result?.files.includes('tweaks.sh'), 'Real UI compile did not return an awaited package')
+  assert.equal(compilation.error, null)
+  const generatedScript = await fs.readFile(path.join(compilation.result.outputDirectory, 'tweaks.sh'), 'utf8')
+  assert.match(generatedScript, /INSTALL MAIN_MENU_LOOP/)
+  const generatedConfig = 'config/main-menu-loop/jci/gui/apps/system/controls/MainMenu/js/MainMenuCtrl.js'
+  assert.deepEqual(await fs.readFile(path.join(compilation.result.outputDirectory, generatedConfig)), await fs.readFile(path.join(__dirname, '../files/tweaks', generatedConfig)))
+  const compilationFailure = await evaluate(`(async () => {
+    bootbox.hideAll()
+    const scope = angular.element(document.body).scope()
+    scope.user.options = [999]
+    await scope.compileTweaks()
+    // Bootstrap removes hidden dialogs after its asynchronous fade transition.
+    // Inspect the newly appended error dialog, not a fading previous success.
+    const state = { result: scope.compileResult, error: scope.compileError, text: [...document.querySelectorAll('.bootbox')].at(-1)?.textContent || '' }
+    bootbox.hideAll(); scope.user.options = [5]
+    return state
+  })()`)
+  assert.equal(compilationFailure.result, null)
+  assert.match(compilationFailure.error, /Invalid compilation/)
+  assert.match(compilationFailure.text, /Could not compile:.*Invalid compilation/)
+  assert.doesNotMatch(compilationFailure.text, /Package generated|Compilation finished|success/i)
+  assert.equal(await fs.readFile(path.join(compilation.result.outputDirectory, 'tweaks.sh'), 'utf8'), generatedScript)
   const builtin = await evaluate(`aio.selectBuiltinImage('background')`)
   const { nativeImage } = require('electron')
   assert.deepEqual(nativeImage.createFromPath(builtin.destination).getSize(), { width: 800, height: 480 })
@@ -66,6 +94,33 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   await new Promise(resolve => setTimeout(resolve, 100))
   assert.equal(await evaluate(`settings.get('stagedImages.background')`), joinedImage.destination)
   assert.deepEqual(await evaluate(`settings.get('backgroundRotator')`), { images: 2, seconds: 60 })
+  const representative = await evaluate(`(async () => {
+    await aio.selectBuiltinImage('offscreen'); await aio.selectBuiltinImage('album')
+    const messages = await aio.loadMessages(), language = messages.Node.Node[0].Node[0]
+    const values = language.Node.map(node => node.$.value)
+    values[0] = 'Task 5 scratch message & XML'
+    await aio.saveMessages(language.$.key, values)
+    const scope = angular.element(document.body).scope()
+    scope.user.options = [5, 11, 16, 19]
+    scope.user.mainOps = [0, 2, 3, 4, 6, 10]; scope.user.colors = 8
+    bootbox.hideAll(); await scope.compileTweaks(); bootbox.hideAll()
+    return { result: scope.compileResult, error: scope.compileError }
+  })()`)
+  assert.equal(representative.error, null)
+  assert.ok(representative.result?.files.includes('config/speedometer/speedometer-config.js'))
+  const generated = representative.result.outputDirectory
+  const representativeScript = await fs.readFile(path.join(generated, 'tweaks.sh'), 'utf8')
+  assert.match(representativeScript, /BG_STEPS=2\nBG_SECONDS=120\nBG_SEC_EACH=60\nBG_WIDTH=1600/)
+  assert.ok(representativeScript.indexOf('START ENABLE WIFI') < representativeScript.indexOf('INSTALL MAIN_MENU_LOOP'))
+  assert.deepEqual(await fs.readFile(path.join(generated, 'config/background.png')), await fs.readFile(joinedImage.destination))
+  assert.match(await fs.readFile(path.join(generated, 'config/message_replies/jci/settings/configurations/blm_msg-system.xml'), 'utf8'), /Task 5 scratch message &amp; XML/)
+  assert.ok(representative.result.files.some(name => name.startsWith('config/color-schemes/theme/jci/')))
+  const { verifyOwned, manifest } = require('./compiler-manifest')
+  assert.equal(verifyOwned(generated), true)
+  const generatedManifest = manifest(generated)
+  assert.deepEqual(representative.result.files, [...Object.keys(generatedManifest.files), '.mzd-aio-owned.json'].sort())
+  await fs.writeFile(path.join(output, 'compiler-manifest.json'), JSON.stringify(generatedManifest, null, 2))
+  console.log('COMPILER_GENERATION_PASS', JSON.stringify({ outputDirectory: generated, files: representative.result.files.length }))
   assert.equal(primary.isVisible(), false); assert.equal(info.isVisible(), false)
   // Hidden-only fixture: fetch/compile fixed bundled payload bytes, never user HTML.
   const delayedMessages = await evaluate(`(async () => {
@@ -122,7 +177,7 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   await new Promise(resolve => primary.once('closed', resolve))
   const saved = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'preferences/aio-persist.json'), 'utf8'))
   assert.equal(saved.closeSmoke, 'flushed')
-  await fs.writeFile(path.join(output, 'hidden-smoke.json'), JSON.stringify({ state, bridge, retainedJoiner, delayedMessages, editorShortcuts, secondary, joined, joinedImage, translatorReady, runtimeInstrumentationVerified: true, nativeImage: builtin, foreignNavigationRejected: prevented, closeFlushed: true, runtimeErrors }, null, 2))
+  await fs.writeFile(path.join(output, 'hidden-smoke.json'), JSON.stringify({ compilation, compilationFailure, representative, generatedManifest, state, bridge, retainedJoiner, delayedMessages, editorShortcuts, secondary, joined, joinedImage, translatorReady, runtimeInstrumentationVerified: true, nativeImage: builtin, foreignNavigationRejected: prevented, closeFlushed: true, runtimeErrors }, null, 2))
   console.log('HIDDEN_SMOKE_PASS')
   app.exit(0)
 }

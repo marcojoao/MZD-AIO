@@ -6,6 +6,16 @@ const { readRegular, writeAtomic } = require('./native-adapters')
 const { validateValue } = require('../assets/js/desktop-client')
 const { resolveOutputDirectory } = require('./policy')
 function createExtraMethods ({ electron, preferences, userData, imageParent, resources, testMode, openScreen, requestFlushAck, imageStaged = () => {}, preferencesChanged = () => {} }) {
+  const themeGrants = new Map()
+  const compile = require('./services').createCompilationService(require('./compiler').createCompiler({
+    resources, userData, imageParent,
+    getState: async user => {
+      const theme = themeGrants.get(user.customTheme?.token)
+      // Acknowledged preference state, not renderer-provided filenames or metadata.
+      const data = await preferences.getPreferences('aio-data')
+      return { backgroundRotator: data.backgroundRotator, theme }
+    }
+  }))
   const editorNames = { translator: 'aio-translate-save', speedo: 'speedo-config' }
   const editorName = name => { if (!Object.hasOwn(editorNames, name)) throw Error('Invalid editor'); return editorNames[name] }
   const object = value => { validateValue(value); if (!value || Array.isArray(value) || typeof value !== 'object' || JSON.stringify(value).length > 4 * 1024 * 1024) throw Error('Invalid editor object'); return value }
@@ -81,7 +91,7 @@ function createExtraMethods ({ electron, preferences, userData, imageParent, res
       await preferences.setPreference('aio-data', 'backgroundRotator', { images, seconds })
       preferencesChanged('aio-data')
     }),
-    'choose-theme': method(0, async scope => { const source = await choose(scope, { properties: ['openDirectory'], title: 'Choose theme JCI folder' }); if (!source) return null; const stat = await fs.lstat(source); if (stat.isSymbolicLink() || !stat.isDirectory()) throw Error('Unsafe theme directory'); scope.theme = { source: await fs.realpath(source), token: randomUUID() }; return { token: scope.theme.token, name: path.basename(source) } }),
+    'choose-theme': method(0, async scope => { const source = await choose(scope, { properties: ['openDirectory'], title: 'Choose theme JCI folder' }); if (!source) return null; const stat = await fs.lstat(source); if (stat.isSymbolicLink() || !stat.isDirectory()) throw Error('Unsafe theme directory'); if (scope.theme) themeGrants.delete(scope.theme.token); scope.theme = { source: await fs.realpath(source), token: randomUUID() }; themeGrants.set(scope.theme.token, scope.theme); return { token: scope.theme.token, name: path.basename(source) } }),
     'reveal-folder': method(1, async (_, name) => {
       const folders = { defaults: path.join(resources, '../background-images/default'), downloads: path.join(userData, 'color-schemes'), apk: path.join(resources, '../castscreenApp') }
       if (name === 'output') { const saved = await preferences.getPreferences('aio-persist'); folders.output = resolveOutputDirectory(saved.copyFolderLocation) }
@@ -112,7 +122,10 @@ function createExtraMethods ({ electron, preferences, userData, imageParent, res
       })
     }),
     'messages-reset': method(0, () => ordered('messages', async () => { const bytes = await readRegular(messageFile); const data = await xml.parseStringPromise(bytes); await writeAtomic(messageDir, 'blm_msg-system.xml', bytes); return data })),
-    compile: method(0, async () => { throw Error('Compilation is not yet migrated to the main process (Task 5); no files were generated.') }),
+    compile: method(1, (scope, request) => compile(request, event => {
+      const owner = scope.getWebContents()
+      if (owner && !owner.isDestroyed()) owner.send('aio:progress', event)
+    })),
     'flush-ack': method(2, (scope, token, error) => { if (typeof token !== 'string' || !(error === null || typeof error === 'string')) throw Error('Invalid flush acknowledgement'); requestFlushAck(scope, token, error) })
   }
 }

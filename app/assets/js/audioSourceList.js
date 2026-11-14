@@ -1,5 +1,4 @@
 /* jshint esversion:6, -W117 */
-var listOrder = ''
 var entertainmentItems = [
   { label: 'USB A', menuItem: 'UsbAudioAPos', pos: 1 },
   { label: 'USB B', menuItem: 'UsbAudioBPos', pos: 2 },
@@ -19,11 +18,3 @@ var entertainmentItems = [
   { label: 'DVD', menuItem: 'DVDItemPos', pos: 12 },
   { label: 'TV', menuItem: 'TVItemPos', pos: 13 }
 ]
-
-function buildEntList (user) {
-  mkdirp.sync(`${tmpdir}/config/audio_order_AND_no_More_Disclaimer/both/jci/gui/apps/system/js/`)
-  for (var item in user.entertainmentItems) {
-    listOrder += 'var ' + user.entertainmentItems[item].menuItem + ' = ' + user.entertainmentItems[item].pos + ';\n'
-  }
-  fs.writeFileSync(`${tmpdir}/config/audio_order_AND_no_More_Disclaimer/systemApp.js.audio`, listOrder)
-}

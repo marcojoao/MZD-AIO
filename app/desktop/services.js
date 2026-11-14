@@ -138,4 +138,12 @@ function registerServiceIpc ({ ipcMain, service, getWebContents, indexPath, capa
   }
 }
 
-module.exports = { createDesktopServices, registerServiceIpc, SERVICE_INTERFACE }
+// Request-only seam: transport authorization still belongs to the exact owned
+// window/frame guard in registerScopedIpc. Configuration never crosses IPC.
+function createCompilationService (compiler) {
+  return async (request, onProgress) => {
+    if (!request || typeof request !== 'object' || Array.isArray(request) || Object.keys(request).sort().join(',') !== 'options,outputParent') throw Error('Invalid compilation request')
+    return compiler.compile({ options: request.options, outputParent: request.outputParent }, onProgress)
+  }
+}
+module.exports = { createDesktopServices, registerServiceIpc, SERVICE_INTERFACE, createCompilationService }

@@ -191,7 +191,7 @@ Additional preload-to-`aio:` channel mapping (arguments in parentheses):
 | loadEditor(name) / saveEditor(name, value) | editor-load / editor-save |
 | importEditor(name) / exportEditor(name, value) | editor-import / editor-export |
 | loadMessages() / saveMessages(language, messages) / resetMessages() | messages-load / messages-save / messages-reset |
-| compile() | compile (explicit Task 5 rejection, no generated output) |
+| `compile(request)` | compile (Task 5: validated main-owned generation; see below) |
 | acknowledgeFlush(token, errorOrNull) | flush-ack |
 
 Names are fixed enums, never paths: editor `translator|speedo`, screen
@@ -233,12 +233,64 @@ validate production Chromium inner-sandbox enforcement or visual rendering.
 The final success requires exit 0 **and** `HIDDEN_SMOKE_PASS` plus the generated
 `hidden-smoke.json`, not exit 0 alone.
 
+## Task 5 compiler integration
+
+The browser builder is now a named bridge client, not the privileged engine.
+`aio.compile({options, outputParent})` invokes `aio:compile` with exactly one
+request containing exactly those keys. Only the primary owner receives this
+capability. Main/frame/file/arity guards in `scoped-ipc.js` still apply; preload
+exposes no generic dispatch or resource/configuration arguments.
+
+`createCompilationService(compiler)` validates the envelope.
+`createCompiler(trustedConfiguration).compile(request, onProgress)` returns
+`Promise<{outputDirectory, files}>`; `onProgress` receives text-only
+`{stage, message}` records. The returned sorted inventory includes the ownership
+sentinel. The `createCompiler` configuration (resources, userData, imageParent,
+policyOptions, getState and test-only copy fault hook) is main-owned, not IPC.
+The default exported `compile` exists for module callers; production composition
+supplies its acknowledged preference/image/theme state explicitly.
+
+The compiler validates destination and locale-declared selection IDs before
+staging, rejects overlapping runs, preserves uninstall-before-install and legacy
+appender LF ordering, and awaits archive extraction before publication. It uses
+main-owned staged PNGs, edited message XML and acknowledged rotator metadata.
+Theme paths require opaque chooser grants; renderer path strings authorize no
+imports. Required missing archives reject with an actionable disabled-download
+message. The legacy explicit custom-theme-without-folder workflow remains a
+manual PNG insertion workflow and emits a diagnostic rather than inventing assets.
+
+Output is a sibling `.aio-stage-*` directory until complete. Existing
+`_copy_to_usb` output is replaceable only when `.mzd-aio-owned.json` exactly
+matches its sorted directory inventory and SHA-256 file manifest. Unowned or
+modified output is refused. Failed staging preserves previous output; publication
+uses sibling backup/rollback. Descendants are checked and leaf opens use
+`O_NOFOLLOW`; this is not an OS-level reservation against hostile simultaneous
+local filesystem changes. Source payloads are never modified or executed.
+
+`compiler-selections.js` owns ordered fragments and generated speedometer/audio
+configuration; `compiler-workflows.js` owns images, themes, XML, restore, CASDK,
+autorun/recovery/serial/WiFi branches; `compiler-fs.js`, `compiler-zip.js` and
+`compiler-manifest.js` own narrow filesystem/archive/ownership operations.
+`compiler-defaults.json` mirrors actual controller defaults (no output path), and
+`test/fixtures/compile-options.json` captures real menu-loop ID 5 via
+`capture-compile-fixture.cjs`. Every run gets fresh variables and selection state.
+
+The UI waits for persistence and generation, clears prior completion on errors,
+and reports manual export only. No drive enumeration, USB copy or generated shell
+execution follows compilation. Text progress and deterministic `AIO_LOG.md`
+replace renderer HTML logging; serial workflows retain their no-log behavior.
+HTML logs outside the generated directory and automatic physical export are
+intentionally not retained.
+
+Hidden smoke now generates both a minimal real package and a representative
+package with a joined background/rotator, built-in images, bundled ZIP theme,
+edited XML and generated speedometer configuration. It verifies the actual
+manifest, rejects a bad selection without success UI or changing previous output,
+then rechecks acknowledged close. This validates desktop generation only, not
+vehicle compatibility or visual/production-inner-sandbox acceptance.
+
 ### Explicit later gates
 
-Task 5 must extract the preserved legacy `build-tweaks.js` into main-owned compiler
-operations, consume staged images/theme grants, rotator metadata and edited XML,
-restore compile-only file replacement/deletion/appender/copy/unzip/line-ending/log
-steps, and verify generated package correctness. No Node restoration is allowed.
 Task 6 owns packaged resource layout/native provisioning and final packaging gates.
 AngularJS and existing permissive inline/eval CSP remain maintenance/security debt;
 this integration is not a claim of complete application or vehicle readiness.
