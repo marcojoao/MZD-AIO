@@ -5,7 +5,16 @@ const path = require('node:path')
 module.exports = async function hiddenSmoke ({ app, primary, openScreen, children, service, imageParent, runtimeErrors, output }) {
   const evaluate = code => primary.webContents.executeJavaScript(code)
   await evaluate('window.desktopStartup')
-  const state = await evaluate(`({require:typeof require, process:typeof process, angular:!!angular.element(document).injector(), text:document.body.textContent.slice(0,180), bridge:typeof aio.chooseImage})`)
+  // Angular bootstrap completion precedes asynchronous ng-view template loading.
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (await evaluate(`!!document.querySelector('#compileButton')`)) break
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  const state = await evaluate(`({require:typeof require, process:typeof process, angular:!!angular.element(document).injector(), text:document.body.textContent.slice(0,180), bridge:typeof aio.chooseImage, compileButton:document.querySelectorAll('#compileButton').length})`)
+  assert.equal(state.compileButton, 1)
+  const runtime = { packaged: app.isPackaged, appPath: app.getAppPath(), resourcesPath: process.resourcesPath, arch: process.arch, electron: process.versions.electron, modules: process.versions.modules, napi: process.versions.napi }
+  if (app.isPackaged) assert.match(runtime.appPath, /Contents\/Resources\/app\.asar$/)
+  console.log('PACKAGED_RUNTIME', JSON.stringify(runtime))
   console.log('PRIMARY_STATE', JSON.stringify(state))
   assert.equal(state.require, 'undefined'); assert.equal(state.process, 'undefined'); assert.equal(state.angular, true); assert.equal(state.bridge, 'function')
   await evaluate(`setTimeout(() => { throw Error('smoke-uncaught-marker') }, 0); setTimeout(() => Promise.reject(Error('smoke-rejection-marker')), 0); undefined`)
@@ -223,7 +232,7 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   await new Promise(resolve => primary.once('closed', resolve))
   const saved = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'preferences/aio-persist.json'), 'utf8'))
   assert.equal(saved.closeSmoke, 'flushed')
-  await fs.writeFile(path.join(output, 'hidden-smoke.json'), JSON.stringify({ scalarFailures, cleanupCompilation, retainedBackup, cleanupEvents, compilation, compilationFailure, representative, generatedManifest, state, bridge, retainedJoiner, delayedMessages, editorShortcuts, secondary, joined, joinedImage, translatorReady, runtimeInstrumentationVerified: true, nativeImage: builtin, foreignNavigationRejected: prevented, closeFlushed: true, runtimeErrors }, null, 2))
+  await fs.writeFile(path.join(output, 'hidden-smoke.json'), JSON.stringify({ runtime, windowsHiddenAtChecks: true, scalarFailures, cleanupCompilation, retainedBackup, cleanupEvents, compilation, compilationFailure, representative, generatedManifest, state, bridge, retainedJoiner, delayedMessages, editorShortcuts, secondary, joined, joinedImage, translatorReady, runtimeInstrumentationVerified: true, nativeImage: builtin, foreignNavigationRejected: prevented, closeFlushed: true, runtimeErrors }, null, 2))
   console.log('HIDDEN_SMOKE_PASS')
   app.exit(0)
 }

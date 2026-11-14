@@ -49,8 +49,8 @@ def main():
 (allow file-read* (subpath (param "SCRATCH")))
 (allow file-write* (subpath (param "SCRATCH")))
 (allow file-write-data (literal "/dev/null"))
-(allow mach-register (global-name-regex #"^com\\.github\\.Electron\\.MachPortRendezvousServer\\.[0-9]+$"))
-(allow mach-lookup (global-name-regex #"^com\\.github\\.Electron\\.MachPortRendezvousServer\\.[0-9]+$"))
+(allow mach-register (global-name-regex #"^(com\\.github\\.Electron|com\\.trevelopment\\.mzd-aio-ti)\\.MachPortRendezvousServer\\.[0-9]+$"))
+(allow mach-lookup (global-name-regex #"^(com\\.github\\.Electron|com\\.trevelopment\\.mzd-aio-ti)\\.MachPortRendezvousServer\\.[0-9]+$"))
 (allow mach-lookup (global-name "com.apple.bsd.dirhelper") (global-name "com.apple.coreservices.launchservicesd") (global-name "com.apple.CARenderServer") (global-name "com.apple.windowserver.active") (global-name "com.apple.FontObjectsServer") (global-name "com.apple.fonts"))
 ''')
     env = {'PATH': str(scratch / 'bin') + ':/usr/bin:/bin',
@@ -62,7 +62,7 @@ def main():
            'npm_config_globalconfig': str(scratch / 'global.npmrc'),
            'npm_config_ignore_scripts': 'true', 'npm_config_audit': 'false',
            'npm_config_fund': 'false', 'npm_config_offline': 'true'}
-    env.update({'MZD_AIO_TEST': '1', 'MZD_AIO_TEST_USER_DATA': str(scratch / 'test-user-data'), 'MZD_AIO_TEST_OUTPUT': str(scratch / 'test-output')})
+    env.update({'MZD_AIO_OUTER_SANDBOX': '1', 'MZD_AIO_TEST': '1', 'MZD_AIO_TEST_USER_DATA': str(scratch / 'test-user-data'), 'MZD_AIO_TEST_OUTPUT': str(scratch / 'test-output')})
     (scratch / 'test-output').mkdir(exist_ok=True)
     process_count = len(subprocess.check_output(['/bin/ps', '-U', str(os.getuid()), '-o', 'pid=']).splitlines())
 

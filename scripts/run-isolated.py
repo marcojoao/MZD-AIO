@@ -61,22 +61,27 @@ def main():
 
     command = ['/usr/bin/sandbox-exec', '-f', str(profile), '-D', 'SCRATCH=' + str(scratch),
                '-D', 'PRIVATE_HOME=' + str(home)] + sys.argv[3:]
+    def interrupted(signum, frame):
+        raise SystemExit(128 + signum)
+
+    signal.signal(signal.SIGTERM, interrupted)
     child = subprocess.Popen(command, cwd=cwd, env=env, start_new_session=True, preexec_fn=limits)
-    start = time.monotonic()
-    # macOS does not enforce RLIMIT_AS; enforce an aggregate process-group RSS cap.
-    while child.poll() is None:
-        rows = subprocess.check_output(['/bin/ps', '-axo', 'pgid=,rss='], text=True).splitlines()
-        rss = sum(int(row.split()[1]) for row in rows if row.split()[0] == str(child.pid))
-        if rss > 2 * 1024 * 1024 or time.monotonic() - start > 600:
-            os.killpg(child.pid, signal.SIGKILL)
-            child.wait()
-            raise SystemExit('Isolation watchdog: memory/time limit exceeded')
-        time.sleep(0.1)
-    # Do not leave daemon children running after the command finishes.
     try:
-        os.killpg(child.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+        start = time.monotonic()
+        # macOS does not enforce RLIMIT_AS; enforce an aggregate process-group RSS cap.
+        while child.poll() is None:
+            rows = subprocess.check_output(['/bin/ps', '-axo', 'pgid=,rss='], text=True).splitlines()
+            rss = sum(int(row.split()[1]) for row in rows if row.split()[0] == str(child.pid))
+            if rss > 2 * 1024 * 1024 or time.monotonic() - start > 600:
+                raise SystemExit('Isolation watchdog: memory/time limit exceeded')
+            time.sleep(0.1)
+    finally:
+        # Reap only the process group owned by this runner, on every exit path.
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        child.wait()
     return child.returncode
 
 

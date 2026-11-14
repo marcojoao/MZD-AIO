@@ -1,55 +1,49 @@
-# Desktop development: tooling milestone
+# Desktop development and unsigned Apple Silicon packaging
 
-## Scope and versions
+## Scope
 
-Use **Node 22.22.3**, **npm 10.9.8**, and Python **3.9+** on macOS.
-The root lock pins Electron **45.3.1**, electron-builder **26.18.0**, and
-Playwright **1.65.0**. Root dependencies are development/build tools;
-`app/package.json` and `app/package-lock.json` own runtime dependencies.
-Commit both lockfiles whenever intentionally changing dependencies. Use `npm ci`,
-not `npm update` or the removed `xinstall` script, to reproduce an installation.
+Use Node **22.22.3**, npm **10.9.8**, Python **3.9+**, macOS and Xcode command-line
+build tools. Root locks Electron **45.3.1**, electron-builder **26.18.0** and
+Playwright **1.65.0**; app locks native drivelist **12.0.2**. Both app/root versions
+remain **2.8.6**, matching the retained UI/payload semantics. The output is named
+**MZD-AIO Modernization**, not an official upstream release. It is unsigned and
+not notarized. Do not publish, install firmware, execute generated shell scripts,
+connect a vehicle, or write physical USB media as part of these checks.
 
-This milestone establishes tooling, not working application startup. Do **not**
-run `npm start`, legacy integration tests, `npm run release`, or packaging yet.
-The legacy application still needs security/API migration. In particular, automatic
-updates, crash uploads and remote downloads are not yet safe application features.
-AngularJS remains unsupported; it is intentionally not replaced here.
+The retained AngularJS screens now use a sandboxed/context-isolated preload and
+main-owned services/compiler. Automatic legacy downloads/updating/crash upload are
+disabled. Missing remote-only assets fail explicitly. Vehicle compatibility,
+Windows/Linux execution, visible rendering and ordinary production inner-sandbox
+startup have **not** been validated. See `desktop-services.md` for the IPC,
+persistence, native image and compiler contracts.
 
-## Prepare an isolated execution copy
+## 1. Prepare a standalone scratch execution copy
 
-Review source and lifecycle scripts before executing them. Never use an existing
-application installation, mounted drive, or personal preferences as test fixtures.
-No physical USB or vehicle operation belongs in this workflow.
-
-The following preparation is run from the reviewed checkout, using an already
-installed matching Node/npm. It creates a standalone local clone with its own Git
-objects (needed by payload verification), copies the runtime and npm out of the
-private home, and removes sample hooks. Nothing executes the application.
+Review the checkout and lifecycle scripts first. Run preparation from that checkout.
+Do not execute target code in a personal installation or your working checkout.
+The runners intentionally accept only dedicated directories below
+`$HOME/.hermes/cache/scratch`; this is derived from HOME, not a machine-specific path.
+No ignored orchestration files are needed.
 
 ```sh
 export SOURCE="$PWD"
-export SCRATCH="$HOME/.hermes/cache/scratch/mzd-tooling-$(date +%s)"
+export SCRATCH="$HOME/.hermes/cache/scratch/mzd-desktop-$(date +%s)"
 export REVIEWED_SHA="$(git rev-parse HEAD)"
 python3 - <<'PY'
 import os, pathlib, shutil, subprocess
-s = pathlib.Path(os.environ['SCRATCH'])
-s.mkdir(parents=True, exist_ok=False)
+s = pathlib.Path(os.environ['SCRATCH']); s.mkdir(parents=True, exist_ok=False)
 (s / 'bin').mkdir()
-node = pathlib.Path(shutil.which('node')).resolve()
-npm_cli = pathlib.Path(shutil.which('npm')).resolve()
-shutil.copy2(node, s / 'bin/node')
-shutil.copytree(npm_cli.parent.parent, s / 'npm')
+shutil.copy2(pathlib.Path(shutil.which('node')).resolve(), s / 'bin/node')
+npm = pathlib.Path(shutil.which('npm')).resolve().parent.parent
+shutil.copytree(npm, s / 'npm')
 wrapper = s / 'bin/npm'
-wrapper.write_text('#!/bin/sh\nexec "' + str(s / 'bin/node') + '" "' +
-                   str(s / 'npm/bin/npm-cli.js') + '" "$@"\n')
+wrapper.write_text('#!/bin/sh\nexec "' + str(s / 'bin/node') + '" "' + str(s / 'npm/bin/npm-cli.js') + '" "$@"\n')
 wrapper.chmod(0o755)
-subprocess.run(['git', '-c', 'core.hooksPath=/dev/null', 'clone',
-                '--no-hardlinks', '--no-checkout', os.environ['SOURCE'],
-                str(s / 'target')], check=True)
-subprocess.run(['git', '-c', 'core.hooksPath=/dev/null', '-C', str(s / 'target'),
-                'checkout', '--detach', os.environ['REVIEWED_SHA']], check=True)
+subprocess.run(['git', '-c', 'core.hooksPath=/dev/null', 'clone', '--no-hardlinks',
+                os.environ['SOURCE'], str(s / 'target')], check=True)
+subprocess.run(['git', '-C', str(s / 'target'), 'checkout', '--detach', os.environ['REVIEWED_SHA']], check=True)
 shutil.rmtree(s / 'target/.git/hooks', ignore_errors=True)
-for name in ['home', 'tmp', 'cache']:
+for name in ['home', 'tmp', 'cache', 'downloads', 'headers']:
     (s / name).mkdir()
 for name in ['user.npmrc', 'global.npmrc']:
     (s / name).write_text('')
@@ -58,9 +52,11 @@ assert subprocess.check_output([str(s / 'bin/npm'), '--version'], text=True).str
 PY
 ```
 
-Dependency fetching is a **separate network-enabled setup step**, with a scrubbed
-environment, no user npm configuration and **all lifecycle scripts disabled**.
-Only the official npm registry is used. Do not expose tokens or SSH agent sockets.
+## 2. Separately reviewed network-enabled setup (no lifecycle scripts)
+
+This step intentionally fetches dependencies, not application content. It exposes
+no tokens, SSH agent or personal npm configuration. Review lock changes rather
+than running `npm update`, `npm audit fix --force`, or old release/install scripts.
 
 ```sh
 for DIR in "$SCRATCH/target" "$SCRATCH/target/app"; do
@@ -70,142 +66,169 @@ for DIR in "$SCRATCH/target" "$SCRATCH/target/app"; do
     npm_config_userconfig="$SCRATCH/user.npmrc" \
     npm_config_globalconfig="$SCRATCH/global.npmrc" \
     ELECTRON_SKIP_BINARY_DOWNLOAD=1 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
-    npm ci --ignore-scripts --no-audit --no-fund \
-    --registry=https://registry.npmjs.org) || exit 1
+    npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org) || exit 1
 done
 ```
 
-To verify reproducibility, prepare a **second fresh scratch clone**, copy the npm
-cache from the first scratch directory, and run root and app `npm ci --ignore-scripts
---offline --no-audit --no-fund` through the isolation runner below. Neither lockfile
-may change. The tooling milestone verified this with no external network permitted.
-Do not treat the successful script-disabled install as a successful native build.
+Fetch official binary/header archives and manifests separately; an existing binary
+is not evidence of fresh provisioning. The following archive checks must succeed
+**before extraction**. No third-party installer/lifecycle script is invoked.
 
-## Offline tests and preservation
+```sh
+for FILE in SHASUMS256.txt electron-v45.3.1-darwin-arm64.zip; do
+  env -i PATH=/usr/bin:/bin HOME="$SCRATCH/home" TMPDIR="$SCRATCH/tmp" \
+    curl --fail --location --proto '=https' \
+    "https://github.com/electron/electron/releases/download/v45.3.1/$FILE" \
+    -o "$SCRATCH/downloads/$FILE" || exit 1
+done
+for FILE in SHASUMS256.txt node-v45.3.1-headers.tar.gz; do
+  env -i PATH=/usr/bin:/bin HOME="$SCRATCH/home" TMPDIR="$SCRATCH/tmp" \
+    curl --fail --location --proto '=https' \
+    "https://artifacts.electronjs.org/headers/dist/v45.3.1/$FILE" \
+    -o "$SCRATCH/headers/$FILE" || exit 1
+done
+python3 - <<'PY'
+import hashlib, os, pathlib, subprocess
+s = pathlib.Path(os.environ['SCRATCH'])
+for directory, name in [('downloads', 'electron-v45.3.1-darwin-arm64.zip'),
+                        ('headers', 'node-v45.3.1-headers.tar.gz')]:
+    root = s / directory
+    manifest = {line.split()[1].lstrip('*'): line.split()[0]
+                for line in (root / 'SHASUMS256.txt').read_text().splitlines()}
+    digest = hashlib.sha256((root / name).read_bytes()).hexdigest()
+    assert digest == manifest[name], (name, digest)
+    print(name, digest)
+dist = s / 'target/node_modules/electron/dist'
+assert not dist.exists(), 'Use a fresh script-disabled installation'
+subprocess.run(['/usr/bin/ditto', '-x', '-k', str(s / 'downloads/electron-v45.3.1-darwin-arm64.zip'), str(dist)], check=True)
+(s / 'target/node_modules/electron/path.txt').write_text('Electron.app/Contents/MacOS/Electron')
+subprocess.run(['/usr/bin/tar', '-xzf', str(s / 'headers/node-v45.3.1-headers.tar.gz'), '-C', str(s / 'headers')], check=True)
+PY
+file "$SCRATCH/target/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+```
 
-Use the trusted checkout's runner, not an unreviewed replacement in the target.
-It permits reads outside the private home, denies reads of that home except the
-scratch subtree, permits writes only under scratch (plus `/dev/null`), and denies
-all networking. Environment variables are allowlisted. CPU, file size, process
-count, descriptors, wall time and process-group RSS are bounded. Python's parent
-watchdog samples RSS, not a kernel-enforced memory limit; descendants deliberately
-escaping their process group are outside that watchdog's guarantee. The runner
-is for reviewed tests, not a general hostile-code containment boundary. Never run
-`launchctl`, installers, sync daemons, or GUI launch commands through it.
+Observed official archive SHA-256:
+`ed40f8473a3c62a7c0463bd42f6724ccb8d5919cfdc64e0d9f65f61bdb3fe4d2`.
+Headers SHA-256:
+`d021647f2f9ee483408ac218697d91ef81f39ce782429f93c8db32e17e75f961`.
+Always compare with the fetched manifest, not only these documented values.
+
+## 3. Offline native build, tests and package
+
+First probe the mandatory outer sandbox. It denies private-home reads, external
+networking and writes outside scratch, scrubs environment/credentials, bounds CPU,
+file size, processes, descriptors and wall time, and watches process-group RSS.
+macOS lacks an enforced RLIMIT_AS; the RSS watchdog is parent-side. Descendants
+escaping their owned process group are outside its guarantee. Both runners kill
+and reap their owned group on completion, exceptions and SIGTERM.
 
 ```sh
 python3 "$SOURCE/scripts/run-isolated.py" "$SCRATCH" "$SCRATCH/target" \
   node test/modern/isolation-probe.cjs "$SOURCE/package.json"
+python3 "$SOURCE/scripts/run-isolated.py" "$SCRATCH" "$SCRATCH/target" \
+  node node_modules/@electron/rebuild/node_modules/node-gyp/bin/node-gyp.js \
+  rebuild --directory=app/node_modules/drivelist --target=45.3.1 --arch=arm64 \
+  --nodedir="$SCRATCH/headers/node_headers"
 python3 "$SOURCE/scripts/run-isolated.py" "$SCRATCH" "$SCRATCH/target" npm test
 python3 "$SOURCE/scripts/run-isolated.py" "$SCRATCH" "$SCRATCH/target" npm run verify:payloads
+python3 "$SOURCE/scripts/run-isolated.py" "$SCRATCH" "$SCRATCH/target" npm run pack:mac:arm64
+python3 "$SOURCE/scripts/run-isolated.py" "$SCRATCH" "$SCRATCH/target" \
+  node scripts/verify-package.cjs 'releases/mac-arm64/MZD-AIO Modernization.app'
 ```
 
-The isolation probe must pass credential/environment, denied-write, and denied-network
-checks before project tests. Its private-home read probe uses the source manifest,
-not a real secret. `npm test` invokes the complete modern `node:test` unit suite
-without a GUI. The separate `test:smoke` command reserves the later hidden-window
-Playwright milestone; its specification does not exist yet and is not claimed to pass.
-Task 6 can reuse this runner, adding only reviewed loopback/browser allowances if
-required. The current profile does not allow even loopback connections.
+Do not run drivelist's automatic `prebuild-install || node-gyp rebuild`: it can
+fetch prebuilds. The explicit native build uses reviewed checksum-verified headers.
+`npmRebuild:false` deliberately prevents builder from silently replacing it.
+`pack:mac:arm64` uses the local extracted Electron distribution, disables signing
+auto-discovery and sets `--publish never`. No signing identity/Keychain access is
+required. Payload-specific FileSets preserve even protected `.gitignore` bytes
+which electron-builder's normal default filters otherwise drop. Files/opts and
+the native binding are ASAR-unpacked; backgrounds/APKs are resources siblings of
+app.asar, matching the runtime's resolved paths.
 
-`verify:payloads` compares working-tree bytes against upstream
-`409c724ed860497b2a34f9367cb4a019287846ea` with `git ls-tree -rz`, `git cat-file`
-and SHA-256. It checks `app/files`, `app/opts`, `background`, `background-images`,
-and `castscreenApp`; missing, changed and added files (even ignored files) fail.
-Symlink targets are compared as bytes, and directory symlinks are not followed.
-The upstream object must exist locally; missing history fails closed. For a shallow
-clone, obtain the reviewed upstream commit during setup, not from inside tests.
-Executable permission changes are not byte changes and are not checked here.
-Mutation tests create their own temporary Git repositories, never edit real payloads.
+`verify-package.cjs` checks native arm64 executable/binding, plist/app versions,
+appId, required ASAR screens/resources, unpacked binding placement, exact protected
+payload file inventories/hashes and credential/evidence/test-private names. It
+compares against this reviewed source; run `verify:payloads` as well to bind that
+source to upstream `409c724ed860497b2a34f9367cb4a019287846ea`. Missing baseline
+Git history fails closed. Static checking is **not** the native ABI gate: actual
+binding load under packaged Electron is required below.
 
-## Preferences and asynchronous renderer bootstrap (Task 3)
+## 4. Hidden source and actual packaged startup/generation
 
-The main preference service (`app/desktop/preferences.js`) owns exactly seven JSON
-stores: `aio-data`, `aio-persist`, `aio-data-obj`, `aio-last`, `user-themes`, `casdk`,
-and `MZD_Speedometer`. Main captures the original Electron `userData` directory
-before legacy naming changes. Reads prefer `<userData>/preferences/<store>.json`,
-falling back to the old `<userData>/<store>.json`. The first save copies that
-store's existing object into the new directory without deleting or rewriting the
-old file. Filenames and object shapes are unchanged. Missing files are empty;
-malformed JSON or unsafe keys fail explicitly, never reset themselves.
+```sh
+python3 "$SOURCE/scripts/run-hidden-isolated.py" "$SCRATCH" "$SCRATCH/target" \
+  node test/modern/isolation-probe.cjs "$SOURCE/package.json"
+python3 "$SOURCE/scripts/run-hidden-isolated.py" "$SCRATCH" "$SCRATCH/target" npm run test:smoke
+python3 "$SOURCE/scripts/run-hidden-isolated.py" "$SCRATCH" "$SCRATCH/target" \
+  npm run test:smoke -- 'releases/mac-arm64/MZD-AIO Modernization.app'
+```
 
-The service exports `createPreferenceService(trustedOptions)` with asynchronous
-`bootstrap()`, `getPreferences(store)`, and `setPreference(store, key, JSONValue)`.
-It serializes reads and writes, validates JSON before persistence, and writes via
-an exclusive same-directory temporary file, fsync and atomic rename. The main
-process supplies paths and app metadata, not renderer request arguments. Locale
-JSON/schema come from shipped `app/lang`; unknown language names fall back to
-English without rewriting the saved choice. The existing four language links
-are recognized from the validated main frame URL on bootstrap.
+The self-contained Node test driver invokes the existing main-owned hidden/CDP
+harness, rather than maintaining a second Playwright/CDP connection. It requires
+actual child exit 0, `HIDDEN_SMOKE_PASS` and a fresh `test-output/hidden-smoke.json`;
+a singleton or early-exit zero is not success. It checks initialized Angular,
+`#compileButton`, no renderer Node, real renderer/main compilation, native PNG and
+native binding load (never drive enumeration), primary/info/joiner/translator
+screens, generated ownership manifest/inventory, invalid scalar rejection with old
+output preservation and no false success, acknowledged close and collected runtime
+exceptions/rejections. Packaged evidence records `app.isPackaged`, ASAR app path,
+resources path, Electron version, architecture and native module ABI.
 
-Preload exposes only `window.aio.bootstrap`, `.getPreferences`, and
-`.setPreference`, using `aio:bootstrap`, `aio:get-preferences`, and
-`aio:set-preference` invoke channels. The handler requires the owned webContents,
-its main frame, and the exact local index page. It rejects extra arguments and
-invalid stores, keys, and JSON values. This does not secure the *remaining*
-legacy IPC/native operations; that is Task 4.
+The user authorized launcher-only Chromium **`--no-sandbox` inside the mandatory
+outer macOS sandbox**. Production retains `sandbox:true`, contextIsolation:true,
+nodeIntegration:false and no disabling startup switch. Do not reuse this exception
+outside the isolated test launcher. Production inner-sandbox startup and visual
+rendering are unverified. The outer sandbox produces retained Chromium diagnostic
+messages (DNS/SystemConfiguration/IOSurface/power notifications); these are not
+suppressed or represented as successful visual rendering. Application exceptions
+and unhandled rejections must still be empty. No windows are intentionally shown,
+no real clipboard/preferences are read, and no physical output is touched.
 
-`desktop-client.js` has no Node dependencies. After successful bootstrap, its
-caches support synchronous `.get`, `.has`, `.store` snapshots and `.size`, with
-ordered asynchronous `.set(key, value)` and bulk `.set(object)`. Dotted keys and
-escaped literal dots match the old dot-prop convention. `flush()` is a barrier
-for all writes queued before it. Cache writes are optimistic, not saved-state
-acknowledgements: callers must await `set`/`flush` before reporting success or
-compiling. A failed save is shown, remains observable through `flush`, and blocks
-later saves until reload; ignored legacy event-handler promises are handled.
-No clear/delete capability is exposed. Upgrade cleanup no longer clears saved
-selections, last compilation, or unknown legacy fields. Loading old settings
-merges missing defaults recursively but replaces arrays, preserving selections.
+The reviewed dummy-child regression is runnable separately:
+`python3 test/modern/runner-cleanup.py`. It imports only runner code, substitutes a
+bounded inert child for the sandbox command and verifies exception/SIGTERM cleanup.
+All fixtures are under dedicated scratch. Policy tests mutation-check removal of
+the builtin application-root guard using an accessible fixture home; preference
+tests inject temp write, sync and rename faults and verify bytes/cleanup/recovery.
 
-`index.html` no longer uses Angular auto-bootstrap. The client waits for DOM ready
-and bootstrap data, installs globals, then loads the fixed dependent script list
-sequentially before calling Angular exactly once. Failure renders startup text
-instead of initializing controllers. `MainCtrl` save/mini-save wait for disk;
-compilation waits for the shared persistence barrier. Main preferences use the
-same service, and main quit waits for its queued writes. Pending renderer writes
-not yet sent across IPC still require the Task 4 window-close handshake.
+## 5. Reproducibility and bundle-preserving ZIP
 
-These unit tests run in the same offline scratch runner, without dependencies or
-Electron. VM tests fake only Electron transport, Angular/DOM/UI/native boundaries;
-they exercise the real preload, handlers, service, client and controller bodies.
-The complete application is **not yet launchable under the required security
-settings**: remaining renderer `require`, window/dialog/clipboard/filesystem,
-legacy IPC and native drivelist use belong to Task 4, and compiler/translator
-file operations belong to Task 5. The removed broad `Config` global must not be
-restored for translator/speedo-config auxiliary stores; migrate those explicitly.
-AngularJS remains an unsupported maintenance dependency.
+Prepare a second fresh scratch clone at the same reviewed commit, copy only the
+npm cache and verified official archives/headers from setup, and repeat both
+`npm ci --ignore-scripts --offline --no-audit --no-fund` inside `run-isolated.py`.
+Check both lockfiles remain byte-identical. Extract Electron into an absent dist,
+rebuild the native module, run tests/preservation, package, inspect and run actual
+packaged smoke again. Do not copy node_modules and call that a clean install.
+Create a ZIP without opening the bundle:
 
-## Reviewed lifecycle decisions and native limitation
+```sh
+ditto -c -k --sequesterRsrc --keepParent \
+  "$SCRATCH/target/releases/mac-arm64/MZD-AIO Modernization.app" \
+  "$SCRATCH/MZD-AIO-Modernization-2.8.6-mac-arm64-unsigned.zip"
+shasum -a 256 "$SCRATCH/MZD-AIO-Modernization-2.8.6-mac-arm64-unsigned.zip"
+```
 
-Root's automatic native postinstall and upgrade script were removed. The app has
-no lifecycle scripts. Spectron, devtron and obsolete standalone electron-rebuild
-were removed. Transitive lifecycle scripts remain disabled: the Windows-only
-`electron-winstaller` install script is not needed for this Mac; development
-`prepare` scripts are not a reason to execute them. `drivelist`'s
-`prebuild-install || node-gyp rebuild` is **not** automatically run: it can fetch
-unreviewed prebuilds. Electron is explicitly provisioned only after checking its
-archive against the official release's `SHASUMS256.txt`; its installer can then
-use the reviewed local cache offline. Do not confuse a skipped/no-op installer
-with a validated binary. Check the installed executable with `file`, without
-launching it.
+Keep deliverables under ignored `releases/`, not only prunable scratch; never commit
+binaries/evidence or treat local ZIP production as publication. Extract the ZIP to
+a fresh scratch directory and compare the entire bundle (including symlink targets,
+file bytes and executable permissions) before handoff.
 
-Recovery verified the Electron 45.3.1 darwin-arm64 archive's official SHA-256:
-`ed40f8473a3c62a7c0463bd42f6724ccb8d5919cfdc64e0d9f65f61bdb3fe4d2`.
-The installed executable was identified as Mach-O arm64; it was not launched.
+## Dependency and acceptance limitations
 
-An explicit offline native build was attempted with the builder's bundled
-`node-gyp`, target 45.3.1 and arm64. Missing headers first caused the expected
-network-policy failure. A bounded retry used official Electron headers fetched
-separately and checked against their official checksum manifest, with
-`--nodedir=<scratch>/headers/node_headers`. Compilation then failed in the locked
-legacy NAN headers against Electron 45's V8 APIs (`v8::External::Value` now requires
-a tag, among other incompatibilities). No native module was loaded or drive
-enumeration invoked. Keep native setup deferred until the owning drive service is
-migrated; do not downgrade Electron or blindly upgrade app APIs to mask this error.
-Legacy dependencies also emit deprecation/security warnings; this milestone is not
-a clean security audit or a working packaged application.
+Obsolete Standard/Mocha/Chai/dependency-check root tooling and its unused script
+entrypoints were removed; `npm test` is the modern Node test suite. Lifecycle
+scripts remain disabled. A real npm registry audit after pruning (2026-11-14)
+returns **12 root findings: 6 moderate, 5 high, 1 critical**, and **9 app findings:
+1 moderate, 3 high, 5 critical**. Root includes electron-builder transitive chains,
+lodash/minimatch/minimist and retained legacy build shelljs. App includes appender,
+extract-zip, mkdirp/minimist/optimist, lodash, minimatch/brace-expansion and xml2js.
+These are unresolved; no blind major/API upgrades or warning suppression were used.
+The audit does not cover vendored AngularJS or the permissive inline/eval CSP,
+which remain explicit maintenance/security debt. Do not treat the unsigned build
+as security-certified, vehicle-ready, notarized or production-release-supported.
 
-`npm run pack:mac:arm64` is configured for a directory build and `--publish never`,
-with `build.directories.app = app` and no Bintray configuration. It is **not yet
-validated** and is expected to require the later app/native migration. Do not
-publish, sign, install firmware, or write raw disks as part of development checks.
+The large swap archive remains byte-preserved in the package. Task 5 already
+extracted and hashed its actual 1 GiB entry under a separately bounded runner;
+Task 6 checks included archive bytes and does not repeat that expansion. Desktop
+compilation tests do not execute generated vehicle scripts.

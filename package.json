@@ -32,11 +32,6 @@
   ],
   "scripts": {
     "test": "npm run test:unit",
-    "unit": "standard && mocha test/unit --recursive",
-    "integration": "standard && mocha test/integration --recursive",
-    "coverage": "istanbul cover node_modules/.bin/_mocha -- --recursive",
-    "depcheck": "dependency-check app --entry main.js --unused --no-dev",
-    "lint": "standard",
     "start": "electron ./app/main",
     "clean:linux": "rimraf releases/linux* release/*.deb release/*.AppImage",
     "clean:osx": "rimraf releases/mac",
@@ -58,9 +53,9 @@
     "release": "electron-builder",
     "postbuild": "node build/target.js --clean",
     "test:unit": "node --test test/modern/*.test.cjs",
-    "test:smoke": "playwright test test/modern/smoke.spec.cjs --workers=1",
+    "test:smoke": "node test/modern/smoke.spec.cjs",
     "verify:payloads": "node scripts/verify-payloads.cjs",
-    "pack:mac:arm64": "electron-builder --mac --arm64 --dir --publish never"
+    "pack:mac:arm64": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64 --dir --publish never --config.electronDist=node_modules/electron/dist"
   },
   "standard": {
     "globals": [
@@ -90,14 +85,14 @@
   },
   "build": {
     "appId": "com.trevelopment.mzd-aio-ti",
-    "productName": "MZD-AIO-TI",
+    "productName": "MZD-AIO Modernization",
+    "npmRebuild": false,
+    "files": ["**/*", "!files{,/**/*}", "!opts{,/**/*}", {"from": "files", "to": "files", "filter": ["**/*"]}, {"from": "opts", "to": "opts", "filter": ["**/*"]}],
+    "asarUnpack": ["node_modules/drivelist/build/Release/*.node", "files/**/*", "opts/**/*"],
     "copyright": "©2020 Trevelopment By Trevor G Martin",
     "artifactName": "${productName}-${os}_${version}.${ext}",
     "extraResources": [
-      "background-images/**/*"
-    ],
-    "extraFiles": [
-      "castscreenApp/*.apk"
+      "background-images/**/*", "background/**/*", "castscreenApp/**/*"
     ],
     "compression": "maximum",
     "mac": {
@@ -145,16 +140,10 @@
     "publish": []
   },
   "devDependencies": {
-    "async": "3.2.0",
-    "chai": "4.2.0",
-    "chai-as-promised": "7.1.1",
-    "dependency-check": "4.1.0",
     "electron": "45.3.1",
     "electron-builder": "26.18.0",
-    "mocha": "6.2.3",
     "rimraf": "3.0.2",
     "shelljs": "0.8.3",
-    "standard": "13.1.0",
     "@playwright/test": "1.65.0"
   },
   "packageManager": "npm@10.9.8"

@@ -309,8 +309,28 @@ manifest, rejects a bad selection without success UI or changing previous output
 then rechecks acknowledged close. This validates desktop generation only, not
 vehicle compatibility or visual/production-inner-sandbox acceptance.
 
-### Explicit later gates
+### Packaged verification (Task 6)
 
-Task 6 owns packaged resource layout/native provisioning and final packaging gates.
-AngularJS and existing permissive inline/eval CSP remain maintenance/security debt;
-this integration is not a claim of complete application or vehicle readiness.
+`docs/development.md` now gives self-contained clean install, checksum-verified
+fresh Electron/header provisioning, explicit offline drivelist build, packaging,
+resource verification and hidden smoke commands. The unsigned native ARM64 bundle
+is labeled MZD-AIO Modernization (2.8.6), not an upstream release. Publishing and
+signing discovery are disabled; builder uses the explicitly provisioned local
+runtime and never silently rebuilds the native addon.
+
+Protected files/opts are included byte-for-byte using dedicated FileSets and
+ASAR-unpacked for guarded filesystem reads. Backgrounds and castscreen APKs live
+under Contents/Resources beside app.asar; no source-tree fallback is used. Static
+verification checks metadata, native architectures, archive resources, protected
+inventories and contamination. The real packaged hidden harness records packaged
+ASAR/resource paths and Electron/native module ABI and loads the actual native
+binding without enumerating drives. Its main/secondary renderer bridge compiles
+real representative output, validates manifest/inventory, rejects bad scalar input
+without losing old output, and awaits acknowledged close. The standalone smoke
+driver requires actual child exit 0 plus fresh final evidence, not exit 0 alone.
+
+The launcher-only inner-sandbox exception and mandatory outer sandbox remain as
+documented above. Production inner-sandbox startup, visual rendering and hardware
+compatibility remain unverified. AngularJS, permissive inline/eval CSP and the
+reported dependency audit findings remain unresolved maintenance/security debt;
+this is not a claim of production or vehicle readiness.

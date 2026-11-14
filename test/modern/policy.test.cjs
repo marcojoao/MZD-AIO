@@ -82,9 +82,17 @@ test('output rejects an existing file target without changing it', t => {
   assert.equal(fs.readFileSync(output, 'utf8'), 'untouched')
 })
 
-test('production output defaults protect the real home and application source resources', () => {
-  assert.throws(() => resolveOutputDirectory(os.homedir()), /output/i)
-  assert.throws(() => resolveOutputDirectory(path.resolve(__dirname, '../../app')), /output/i)
+test('production output defaults protect application resources for the intended reason (mutation checked)', t => {
+  const f = fixture(t)
+  const appRoot = path.resolve(__dirname, '../../app')
+  const check = resolve => assert.throws(() => resolve(appRoot, { home: f.home }), error => error.cause?.message === 'Protected parent')
+  check(resolveOutputDirectory)
+  // An accessible home prevents an unrelated EPERM lookup from masking removal.
+  const Module = require('node:module')
+  const filename = require.resolve('../../app/desktop/policy')
+  const mutant = new Module(filename, module); mutant.filename = filename; mutant.paths = module.paths
+  mutant._compile(fs.readFileSync(filename, 'utf8').replace("const roots = [path.resolve(__dirname, '..')]", 'const roots = []'), filename)
+  assert.throws(() => check(mutant.exports.resolveOutputDirectory), /Missing expected exception/)
 })
 
 // Removing strict drivelist status/mountpoint validation must fail these cases.
