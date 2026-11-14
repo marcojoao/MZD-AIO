@@ -218,15 +218,33 @@ file bytes and executable permissions) before handoff.
 
 Obsolete Standard/Mocha/Chai/dependency-check root tooling and its unused script
 entrypoints were removed; `npm test` is the modern Node test suite. Lifecycle
-scripts remain disabled. A real npm registry audit after pruning (2026-11-14)
-returns **12 root findings: 6 moderate, 5 high, 1 critical**, and **9 app findings:
-1 moderate, 3 high, 5 critical**. Root includes electron-builder transitive chains,
-lodash/minimatch/minimist and retained legacy build shelljs. App includes appender,
-extract-zip, mkdirp/minimist/optimist, lodash, minimatch/brace-expansion and xml2js.
-These are unresolved; no blind major/API upgrades or warning suppression were used.
-The audit does not cover vendored AngularJS or the permissive inline/eval CSP,
-which remain explicit maintenance/security debt. Do not treat the unsigned build
-as security-certified, vehicle-ready, notarized or production-release-supported.
+scripts remain disabled. After the focused runtime import audit, application
+runtime dependencies are exactly pinned `drivelist@12.0.2`, `xml2js@0.6.2` and
+`yauzl@3.4.0`. Removed unused appender, extract-zip, mkdirp, lodash, copy-dir, crlf,
+rimraf, bluebird-lst, global and npm jquery, together with their orphaned chains.
+The renderer loads vendored jQuery, not npm jquery; vendored assets/payload bytes
+were not changed. XML parser/Builder message APIs and prototype-key handling are
+regression-tested. Compiler ZIP extraction uses direct yauzl with the guarded
+stage writer, not extract-zip's path writer; success and read/open/stream/write/
+close failures close owned resources and settle explicitly. `fromBuffer` in yauzl
+3.4 forces autoClose:false, so the compiler closes the archive on success too.
+A separate scrubbed registry audit after this cleanup returns **zero application
+findings** and **12 root findings: 6 moderate, 5 high, 1 critical**. Root includes
+necessary electron-builder transitive chains, lodash/minimatch/minimist and
+retained build shelljs; no blind builder downgrade/audit-fix was applied. Audit
+severity is not demonstrated exploitation, and zero npm application findings is
+not a security certification. The audit does not cover vendored AngularJS or the
+permissive inline/eval CSP, which remain explicit maintenance/security debt.
+Do not treat the unsigned build as vehicle-ready, notarized or production-release-supported.
+
+The static package verifier scans every physical bundle entry with `lstat`, never
+recurses into directory symlinks, rejects forbidden secret/evidence/test-private
+paths outside ASAR as well as inside it, and requires exact correspondence of
+physical unpacked leaves to ASAR declarations. Internal relative framework aliases
+remain valid; absolute, escaping, cyclic and dangling symlinks reject. Symlink
+resolution checks each component remains inside the bundle before filesystem
+lookup. Protected resource inventories/hashes and ASAR cache invalidation remain
+mandatory. Tiny negative fixtures never modify the release bundle.
 
 The large swap archive remains byte-preserved in the package. Task 5 already
 extracted and hashed its actual 1 GiB entry under a separately bounded runner;

@@ -31,18 +31,9 @@
     "url": "index.html"
   },
   "dependencies": {
-    "appender": "^0.0.2",
-    "copy-dir": "^1.2.0",
-    "crlf": "^1.1.1",
     "drivelist": "12.0.2",
-    "extract-zip": "^1.6.7",
-    "lodash": "^4.17.15",
-    "mkdirp": "^0.5.1",
-    "rimraf": "^3.0.0",
-    "xml2js": "^0.4.22",
-    "bluebird-lst": "^1.0.9",
-    "global": "^4.3.2",
-    "jquery": "^3.4.1"
+    "xml2js": "0.6.2",
+    "yauzl": "3.4.0"
   },
   "engines": {
     "node": "22.22.3"
