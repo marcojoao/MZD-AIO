@@ -244,8 +244,11 @@ exposes no generic dispatch or resource/configuration arguments.
 `createCompilationService(compiler)` validates the envelope.
 `createCompiler(trustedConfiguration).compile(request, onProgress)` returns
 `Promise<{outputDirectory, files}>`; `onProgress` receives text-only
-`{stage, message}` records. The returned sorted inventory includes the ownership
-sentinel. The `createCompiler` configuration (resources, userData, imageParent,
+`{stage, message}` records. Recoverable post-publication cleanup warnings also
+carry `{code: 'BACKUP_CLEANUP_FAILED', recoverable: true, backupDirectory,
+diagnostic}`; these do not change the successful result shape. The returned
+sorted inventory includes the ownership sentinel. The `createCompiler`
+configuration (resources, userData, imageParent,
 policyOptions, getState and test-only copy fault hook) is main-owned, not IPC.
 The default exported `compile` exists for module callers; production composition
 supplies its acknowledged preference/image/theme state explicitly.
@@ -263,7 +266,15 @@ Output is a sibling `.aio-stage-*` directory until complete. Existing
 `_copy_to_usb` output is replaceable only when `.mzd-aio-owned.json` exactly
 matches its sorted directory inventory and SHA-256 file manifest. Unowned or
 modified output is refused. Failed staging preserves previous output; publication
-uses sibling backup/rollback. Descendants are checked and leaf opens use
+uses sibling backup/rollback until the stage-to-output rename succeeds. That
+rename is the commit point: failure only while verifying/removing the previous
+backup returns the new successful package and emits a structured recoverable
+warning. The compiler does not retry/delete retained backups during later errors;
+explicit recovery/cleanup may be needed and consumes disk in the meantime.
+Synchronous throws or asynchronous rejections from warning/completion observers
+cannot turn committed publication into a failed compile. Pre-commit generation
+and publication failures still reject and preserve/restore the previous package.
+Descendants are checked and leaf opens use
 `O_NOFOLLOW`; this is not an OS-level reservation against hostile simultaneous
 local filesystem changes. Source payloads are never modified or executed.
 
@@ -272,6 +283,15 @@ configuration; `compiler-workflows.js` owns images, themes, XML, restore, CASDK,
 autorun/recovery/serial/WiFi branches; `compiler-fs.js`, `compiler-zip.js` and
 `compiler-manifest.js` own narrow filesystem/archive/ownership operations.
 `compiler-defaults.json` mirrors actual controller defaults (no output path), and
+`compiler-options.js` validates shell/JS interpolation according to its field:
+locale/controller enums and booleans, finite bounded numbers, canonical digit
+strings for numeric JS/layout slots, exact known speedometer identifiers and
+six-digit hex colors. Free-form Gracenote/SSID/password values stay in escaped
+double-quoted shell literals; they are never permitted in identifier/numeric slots.
+Unsupported types, nonfinite values and line terminators in generated JS comments
+are rejected. The statusbar speedometer uses bundled `19_speedo-i2.txt` for its
+SBMAIN/SBVAL assignments; the obsolete missing `19_set_sb_values.txt` reference is
+not needed.
 `test/fixtures/compile-options.json` captures real menu-loop ID 5 via
 `capture-compile-fixture.cjs`. Every run gets fresh variables and selection state.
 

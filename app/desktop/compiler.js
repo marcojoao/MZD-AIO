@@ -77,8 +77,18 @@ function createCompiler ({ resources = path.resolve(__dirname, '..'), userData, 
         if (hadOutput) fs.renameSync(backup, outputDirectory)
         throw error
       }
-      if (hadOutput) { verifyOwned(backup); fs.rmSync(backup, { recursive: true }) }
-      onProgress({ stage: 'complete', message: 'Package generated; manually copy its contents to USB.' })
+      // Successful stage rename is the publication commit point. Observer and
+      // old-backup cleanup failures must never misreport that committed package.
+      const notifyCommitted = event => {
+        try { Promise.resolve(onProgress(event)).catch(() => {}) } catch (_) {}
+      }
+      if (hadOutput) {
+        try { verifyOwned(backup); fs.rmSync(backup, { recursive: true }) } catch (error) {
+          notifyCommitted({ stage: 'warning', code: 'BACKUP_CLEANUP_FAILED', recoverable: true, backupDirectory: backup,
+            message: 'Package generated; previous backup cleanup failed. Retain the backup for explicit recovery/cleanup.', diagnostic: error.message })
+        }
+      }
+      notifyCommitted({ stage: 'complete', message: 'Package generated; manually copy its contents to USB.' })
       return { outputDirectory, files }
     } finally {
       if (stage) fs.rmSync(stage, { recursive: true, force: true })

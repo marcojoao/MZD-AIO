@@ -58,6 +58,52 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   assert.match(compilationFailure.text, /Could not compile:.*Invalid compilation/)
   assert.doesNotMatch(compilationFailure.text, /Package generated|Compilation finished|success/i)
   assert.equal(await fs.readFile(path.join(compilation.result.outputDirectory, 'tweaks.sh'), 'utf8'), generatedScript)
+  // Exercise renderer/main validation and post-commit warning delivery, not a
+  // substitute compiler. Only the hidden harness injects one owned-backup rm.
+  const scalarFailures = []
+  for (const field of ['sbmain', 'barSpeedoRows']) {
+    const failure = await evaluate(`(async () => {
+      const scope = angular.element(document.body).scope(), saved = structuredClone(scope.user)
+      scope.user.options = [19]
+      if (${JSON.stringify(field)} === 'sbmain') scope.user.speedoOps.sbmain = 'x /usr/bin/id'
+      else scope.user.spdExtra.barSpeedoRows = '4 / 0'
+      try {
+        bootbox.hideAll(); await scope.compileTweaks()
+        return { result: scope.compileResult, error: scope.compileError }
+      } finally { scope.user = saved; bootbox.hideAll() }
+    })()`)
+    assert.equal(failure.result, null); assert.match(failure.error, /Invalid compilation/)
+    assert.equal(await fs.readFile(path.join(compilation.result.outputDirectory, 'tweaks.sh'), 'utf8'), generatedScript)
+    scalarFailures.push({ field, ...failure })
+  }
+  const compileSelection = id => evaluate(`(async () => {
+    const scope = angular.element(document.body).scope()
+    scope.user.options = [${id}]; bootbox.hideAll(); await scope.compileTweaks(); bootbox.hideAll()
+    return { result: scope.compileResult, error: scope.compileError }
+  })()`)
+  const newControl = await compileSelection(6)
+  assert.equal(newControl.error, null)
+  const newScript = await fs.readFile(path.join(newControl.result.outputDirectory, 'tweaks.sh'), 'utf8')
+  assert.notEqual(newScript, generatedScript)
+  await compileSelection(5)
+  await evaluate(`window.cleanupEvents = []; window.stopCleanupEvents = aio.onProgress(e => cleanupEvents.push(e)); undefined`)
+  const sync = require('node:fs'), originalRm = sync.rmSync
+  let retainedBackup
+  sync.rmSync = (name, ...args) => {
+    if (path.dirname(String(name)) === path.dirname(compilation.result.outputDirectory) && path.basename(String(name)).startsWith('.aio-previous-')) {
+      retainedBackup = String(name); throw Error('hidden-only old-backup removal failure')
+    }
+    return originalRm(name, ...args)
+  }
+  let cleanupCompilation
+  try { cleanupCompilation = await compileSelection(6) } finally { sync.rmSync = originalRm }
+  const cleanupEvents = await evaluate(`(() => { stopCleanupEvents(); return cleanupEvents })()`)
+  assert.equal(cleanupCompilation.error, null); assert.ok(cleanupCompilation.result?.files.includes('tweaks.sh'))
+  assert.equal(await fs.readFile(path.join(cleanupCompilation.result.outputDirectory, 'tweaks.sh'), 'utf8'), newScript)
+  assert.equal(await fs.readFile(path.join(retainedBackup, 'tweaks.sh'), 'utf8'), generatedScript)
+  assert.equal(require('./compiler-manifest').verifyOwned(retainedBackup), true)
+  assert.ok(cleanupEvents.some(e => e.stage === 'warning' && e.code === 'BACKUP_CLEANUP_FAILED' && e.recoverable && e.backupDirectory === retainedBackup))
+  console.log('COMPILER_FIX_REGRESSION_PASS', JSON.stringify({ scalarFailures, cleanupCompilation, retainedBackup, cleanupEvents: cleanupEvents.filter(e => e.stage !== 'generate') }))
   const builtin = await evaluate(`aio.selectBuiltinImage('background')`)
   const { nativeImage } = require('electron')
   assert.deepEqual(nativeImage.createFromPath(builtin.destination).getSize(), { width: 800, height: 480 })
@@ -177,7 +223,7 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   await new Promise(resolve => primary.once('closed', resolve))
   const saved = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'preferences/aio-persist.json'), 'utf8'))
   assert.equal(saved.closeSmoke, 'flushed')
-  await fs.writeFile(path.join(output, 'hidden-smoke.json'), JSON.stringify({ compilation, compilationFailure, representative, generatedManifest, state, bridge, retainedJoiner, delayedMessages, editorShortcuts, secondary, joined, joinedImage, translatorReady, runtimeInstrumentationVerified: true, nativeImage: builtin, foreignNavigationRejected: prevented, closeFlushed: true, runtimeErrors }, null, 2))
+  await fs.writeFile(path.join(output, 'hidden-smoke.json'), JSON.stringify({ scalarFailures, cleanupCompilation, retainedBackup, cleanupEvents, compilation, compilationFailure, representative, generatedManifest, state, bridge, retainedJoiner, delayedMessages, editorShortcuts, secondary, joined, joinedImage, translatorReady, runtimeInstrumentationVerified: true, nativeImage: builtin, foreignNavigationRejected: prevented, closeFlushed: true, runtimeErrors }, null, 2))
   console.log('HIDDEN_SMOKE_PASS')
   app.exit(0)
 }

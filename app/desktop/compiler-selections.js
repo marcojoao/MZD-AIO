@@ -177,7 +177,7 @@ function buildTweak (user) {
         addTweak('19_speedo-polish.txt', true)
         break
       case 4:
-        addTweak('19_speedo-slovic.txt', true)
+        addTweak('19_speedo-slovak.txt', true)
         break
       case 5:
         addTweak('19_speedo-turkish.txt', true)
@@ -220,9 +220,8 @@ function buildTweak (user) {
     if (user.speedoOps.sml.id === 22) {
       addTweak('19_speedo-small_speedo_off.txt', true)
     } else {
-      if (user.speedoOps.sbmain !== undefined) {
-        addTweak('19_set_sb_values.txt', true)
-      }
+      // SBMAIN/SBVAL1/SBVAL2 are applied by 19_speedo-i2.txt below.
+      // The legacy 19_set_sb_values.txt reference has no bundled resource.
       if (user.speedoOps.sbfuel !== 'disable') {
         addTweak('19_sbfuelbar.txt', true)
       }
