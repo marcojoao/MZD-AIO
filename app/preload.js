@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('aio', Object.freeze({
   resetWindow: () => ipcRenderer.invoke('aio:reset-window'),
   openScreen: screen => ipcRenderer.invoke('aio:open-screen', screen),
   secondaryBootstrap: () => ipcRenderer.invoke('aio:secondary-bootstrap'),
+  getImageState: () => ipcRenderer.invoke('aio:image-state'),
   selectBuiltinImage: name => ipcRenderer.invoke('aio:builtin-image', name),
   chooseJoinedImage: () => ipcRenderer.invoke('aio:joined-image'),
   saveJoinedImage: data => ipcRenderer.invoke('aio:save-joined-image', data),

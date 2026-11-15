@@ -15,6 +15,16 @@ function showNotification (title, message, fadeouttime, callback) {
   snackbar(`<img src='icon.ico' onerror='$(this).hide()'> ${nohtml}`)
 }
 
+// Gritter interpolates HTML: escape every structured event field before insertion.
+function showCompileProgress (event) {
+  const escape = value => String(value || '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]))
+  const warning = event.stage === 'warning'
+  let text = String(event.message || '')
+  if (event.code === 'BACKUP_CLEANUP_FAILED') {
+    text += ' Retained backup: ' + event.backupDirectory + '. Diagnostic: ' + event.diagnostic + '. Recover files from this backup if needed; remove it manually only after verifying the new package.'
+  }
+  $.gritter.add({ title: warning ? 'MZD-AIO — compilation warning' : 'MZD-AIO', text: escape(text), sticky: warning, time: 5000 })
+}
 function snackbar (message, mtime) {
   /* $('#snackbar').append('body')
   var x = document.getElementById('snackbar')

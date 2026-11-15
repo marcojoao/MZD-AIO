@@ -13,8 +13,33 @@ const uiEvents = window.uiEvents = (() => {
 aio.onMenuAction(action => {
   if (['save-options', 'load-options', 'load-last', 'start-compile', 'go-home'].includes(action)) uiEvents.emit(action)
 })
-aio.onProgress(message => snackbar(message))
+aio.onProgress(event => showCompileProgress(event))
 aio.onImageStaged(result => nativeAction(applyImageResult(result)))
+let resolvedImages = desktopData.images || {}
+function renderResolvedPreviews () {
+  const background = resolvedImages.background
+  if (background?.error) {
+    getBackground = ''
+    for (const img of document.querySelectorAll('#infotnmtBG, #modalimg')) img.removeAttribute('src')
+  }
+  if (background?.preview) {
+    getBackground = background.preview
+    for (const img of document.querySelectorAll('#infotnmtBG, #modalimg')) if (img.getAttribute('src') !== background.preview) img.setAttribute('src', background.preview)
+  }
+  for (const [kind, selector] of [['album', '#blnk-albm-img'], ['offscreen', '#resolved-offscreen-preview']]) {
+    const state = resolvedImages[kind]
+    const host = document.querySelector(selector)
+    if (host && state?.error && host.childNodes.length) { host.replaceChildren(); host.removeAttribute('data-preview') }
+    if (host && state?.preview && host.getAttribute('data-preview') !== state.preview) {
+      const img = document.createElement('img'); img.src = state.preview; img.alt = kind + ' image selected for compilation'; img.style.maxWidth = '100%'
+      host.replaceChildren(img); host.setAttribute('data-preview', state.preview)
+    }
+  }
+  const errors = document.querySelector('#resolved-image-errors')
+  const text = Object.values(resolvedImages).filter(x => x.error).map(x => x.error).join('\n')
+  if (errors && errors.textContent !== text) errors.textContent = text
+}
+async function refreshImagePreviews () { resolvedImages = await aio.getImageState(); renderResolvedPreviews(); return resolvedImages }
 async function applyImageResult (result) {
   if (!result) return null
   if (result.kind === 'background') {
@@ -27,6 +52,7 @@ async function applyImageResult (result) {
     $('.blnk-albm-art').hide(); $('#blnk-albm-img').show().empty().append($('<img>').attr('src', result.destination + '?' + Date.now()))
   }
   await settings.set('stagedImages.' + result.kind, result.destination)
+  await refreshImagePreviews()
   return result
 }
 async function selectImage (kind) {
@@ -60,5 +86,6 @@ function migratePayloadControls () {
     if (next !== old) element.setAttribute('onclick', next)
   }
 }
-new MutationObserver(migratePayloadControls).observe(document.documentElement, { childList: true, subtree: true })
+new MutationObserver(() => { migratePayloadControls(); renderResolvedPreviews() }).observe(document.documentElement, { childList: true, subtree: true })
 migratePayloadControls()
+renderResolvedPreviews()

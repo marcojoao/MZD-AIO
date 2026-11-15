@@ -27,9 +27,9 @@ async function writeAtomic (directory, filename, data) {
     await fs.rename(temp, target)
   } finally { if (handle) await handle.close(); await fs.unlink(temp).catch(e => { if (e.code !== 'ENOENT') throw e }) }
 }
-function createNativeAdapters ({ electron, window, imageParent, drives, testMode = false }) {
+function createNativeAdapters ({ electron, window, imageParent, drives, testMode = false, chooseDialog }) {
   const choose = async options => {
-    if (testMode) return null // Never show native UI during hidden automation.
+    if (testMode) return chooseDialog ? chooseDialog(options) : null // Main-owned fixtures only; never native UI.
     const result = await electron.dialog.showOpenDialog(window, options)
     return result.canceled || !result.filePaths.length ? null : result.filePaths[0]
   }

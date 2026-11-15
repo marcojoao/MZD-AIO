@@ -153,6 +153,8 @@
             </td>
           </tr>
         </table>
+        <div id="resolved-image-errors" role="alert" style="white-space:pre-wrap"></div>
+        <div ng-if="user.mainOps.includes(10)" id="resolved-offscreen-preview" style="max-width:400px" aria-label="Selected offscreen image"></div>
         <div id="bg-img" ng-class="{'w3-hide': !user.mainOps.includes(2)}" ng-cloak>
           <div id="bgPickTitle" style="text-align:center;">
             <h2>Chosen Background Image: <small>(click for preview mode)</small></h2><br>

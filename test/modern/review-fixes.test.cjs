@@ -9,7 +9,7 @@ function controls(file) {
   })
 }
 function eventContext(elements, aio = {}) {
-  const context = { window: {}, aio: { onMenuAction() {}, onProgress() {}, onImageStaged() {}, ...aio }, document: { documentElement: {}, querySelectorAll: () => elements }, MutationObserver: class { observe() {} }, bootbox: { alert() { throw Error('Unexpected disabled notice') } } }
+  const context = { window: {}, desktopData: { images: {} }, aio: { onMenuAction() {}, onProgress() {}, onImageStaged() {}, ...aio }, document: { documentElement: {}, querySelector: () => null, querySelectorAll: selector => selector === '[onclick]' ? elements : [] }, MutationObserver: class { observe() {} }, bootbox: { alert() { throw Error('Unexpected disabled notice') } } }
   vm.createContext(context); vm.runInContext(source('app/assets/js/events.js'), context); return context
 }
 test('I1 retained background joiner control normalizes to actual named API', async () => {

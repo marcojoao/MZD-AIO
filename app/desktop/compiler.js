@@ -9,7 +9,7 @@ const { workflows } = require('./compiler-workflows')
 const { validateOptions } = require('./compiler-options')
 const { manifest, verifyOwned, sentinel } = require('./compiler-manifest')
 
-function createCompiler ({ resources = path.resolve(__dirname, '..'), userData, imageParent, policyOptions, beforeCopy, getState = async () => ({}) } = {}) {
+function createCompiler ({ resources = path.resolve(__dirname, '..'), userData, imageParent, policyOptions, beforeCopy, resolveImage, getState = async () => ({}) } = {}) {
   const protectedRoots = [resources, ...['background', 'background-images', 'castscreenApp'].map(name => path.resolve(resources, '..', name)), imageParent, userData].filter(name => name && fs.existsSync(name))
   const outputPolicy = { ...policyOptions, resourceRoots: [...protectedRoots, ...(policyOptions?.resourceRoots || [])] }
   let busy = false
@@ -45,7 +45,7 @@ function createCompiler ({ resources = path.resolve(__dirname, '..'), userData, 
         if (dataDump) io.copy(path.join(stage, 'data'), stage)
         io.remove(path.join(stage, 'data'))
       }
-      const flow = await workflows({ user, state, resources, userData, imageParent, stage, varDir, io, progress, addRootFiles })
+      const flow = await workflows({ user, state, resources, userData, imageParent, resolveImage, stage, varDir, io, progress, addRootFiles })
       if (user.autorun.installer && !user.restore.full) flow.autorun()
       else {
         const result = selections({ fs: { writeFileSync: io.write }, path, mkdirp: { sync: io.mkdir }, builddir, varDir, tmpdir: stage,

@@ -180,7 +180,13 @@
         v4lsink: true
       }
       const userDefaults = MZDDesktop.mergeDefaults($scope.user, {})
-      $scope.user = MZDDesktop.mergeDefaults(userDefaults, settings.store)
+      // Selection snapshots restore selections, never historical output locations.
+      const restoreSelections = snapshot => {
+        const restored = MZDDesktop.mergeDefaults(userDefaults, snapshot)
+        restored.copydir = persistantData.get('copyFolderLocation', desktopData.paths.desktop)
+        return restored
+      }
+      $scope.user = restoreSelections(settings.store)
       $scope.vpOpsRepeat = {
         None: 0,
         One: 1,
@@ -531,7 +537,7 @@
           $('#import').click()
         } else {
           // Legacy reset flags never discard the user's selections.
-          $scope.user = MZDDesktop.mergeDefaults(userDefaults, settings.store)
+          $scope.user = restoreSelections(settings.store)
           closeHelpDrop()
           setTimeout(function () {
             snackbar('Options Loaded!')
@@ -544,7 +550,7 @@
         if (lastView.size === 0) {
           lastView.set($scope.user)
         }
-        $scope.user = MZDDesktop.mergeDefaults(userDefaults, lastView.store)
+        $scope.user = restoreSelections(lastView.store)
         closeHelpDrop()
         setTimeout(function () {
           snackbar('Loaded Last Compiled Options!')
@@ -756,17 +762,7 @@
           })
           return
         }
-        // check for downloaded files
-        var csfiles = hasColorFiles
-        if ($scope.user.mainOps.includes(3)) {
-          if (!csfiles) {
-            bootbox.alert({
-              title: `Please Download Color Scheme Files Before Compiling`,
-              message: `<a href="" class="w3-btn" onclick="disabledFeature()">Download Color Scheme Files</a>`
-            })
-            return
-          }
-        }
+        // Main validates the selected bundled/imported asset; never download here.
         if ($scope.user.options.includes(23)) {
           $('#refreshBtn').click() // Speedcam Patch has been removed
           return

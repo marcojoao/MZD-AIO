@@ -4,11 +4,10 @@ const path = require('node:path')
 const { read, inventory } = require('./compiler-fs')
 const { unzip } = require('./compiler-zip')
 const colors = ['Red', 'Blue', 'Green', 'Silver', 'Pink', 'Purple', 'Orange', 'Yellow', 'SmoothRed', 'SmoothAzure', 'SmoothViolet', 'carOS', 'StormTroopers', 'Poker', 'Mazda', 'Floating', 'X-Men', 'Custom']
-const imageNames = { background: 'background.png', offscreen: 'OffScreenBackground.png', album: 'no_artwork_icon.png' }
-const builtin = { background: 'default/default.png', offscreen: 'default/OffScreenBackground.png', album: 'blank-album-art/no_artwork_icon.png' }
+const { createImageResolver } = require('./image-state')
 function exists (file) { try { fs.lstatSync(file); return true } catch (e) { if (e.code === 'ENOENT') return false; throw e } }
 const quoteDouble = text => text.replace(/[\\"$`]/g, '\\$&')
-async function workflows ({ user, state, resources, userData, imageParent, stage, varDir, io, progress, addRootFiles }) {
+async function workflows ({ user, state, resources, userData, imageParent, resolveImage = createImageResolver({ resources, userData, imageParent }).resolve, stage, varDir, io, progress, addRootFiles }) {
   const builddir = path.join(resources, 'files/tweaks')
   const colorRoot = path.join(userData || resources, 'color-schemes')
   const out = relative => path.join(stage, relative)
@@ -50,8 +49,8 @@ async function workflows ({ user, state, resources, userData, imageParent, stage
     }
   }
   function stageImage (kind, relative, useDefault = false) {
-    const staged = path.join(imageParent || userData || resources, '_copy_to_usb', imageNames[kind])
-    copy(!useDefault && exists(staged) ? staged : path.join(resources, '../background-images', builtin[kind]), relative)
+    // Write the exact validated bytes, not a second path read after resolution.
+    io.write(out(relative), resolveImage(kind, useDefault).bytes)
   }
   function copyPresetMessageFile () {
     const targets = [path.join(userData || resources, 'messages/blm_msg-system.xml'), path.join(userData || resources, 'background/message_replies/jci/settings/configurations/blm_msg-system.xml'), path.join(builddir, 'config/message_replies/jci/settings/configurations/blm_msg-system.xml')]

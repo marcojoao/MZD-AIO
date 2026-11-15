@@ -69,8 +69,12 @@ async function start () {
     const dimensions = image.resize({ width: 800, height: 480 }).getSize()
     console.log('REAL_NATIVE_CHECK', JSON.stringify({ drivelist: require('drivelist/package.json').version, exports: Object.keys(binding), dimensions }))
   }
+  // Only main-owned hidden instrumentation can inject a one-shot chooser result.
+  let testChoice = null
+  const fixtureControls = testMode ? { choose: value => { testChoice = value } } : null
+  const chooseDialog = testMode ? async () => { const value = testChoice; testChoice = null; return value } : undefined
   primary = makeWindow(indexPath)
-  const service = { ...createDesktopServices(createNativeAdapters({ electron, window: primary, imageParent, drives: require('drivelist'), testMode })) }
+  const service = { ...createDesktopServices(createNativeAdapters({ electron, window: primary, imageParent, drives: require('drivelist'), testMode, chooseDialog })) }
   const chooseOutput = service.chooseOutputDirectory.bind(service)
   service.chooseOutputDirectory = async () => {
     const destination = await chooseOutput()
@@ -80,7 +84,9 @@ async function start () {
     }
     return destination
   }
-  registerPreferenceIpc({ ipcMain, service: preferences, getWebContents: () => primary?.webContents, indexPath })
+  const imageState = require('./desktop/image-state').createImageResolver({ resources: __dirname, userData: legacyDirectory, imageParent, decode: bytes => { const image = electron.nativeImage.createFromBuffer(bytes); if (image.isEmpty()) throw Error('Invalid image'); return image.getSize() } })
+  const primaryPreferences = { ...preferences, bootstrap: async () => ({ ...await preferences.bootstrap(), images: imageState.previews() }) }
+  registerPreferenceIpc({ ipcMain, service: primaryPreferences, getWebContents: () => primary?.webContents, indexPath })
   registerServiceIpc({ ipcMain, service, getWebContents: () => primary?.webContents, indexPath, capabilities: Object.keys(SERVICE_INTERFACE) })
   const primaryScope = { screen: 'primary', win: () => primary, getWebContents: () => primary?.webContents, indexPath, capabilities: [] }
   const secondaryScopes = ['joiner', 'info'].map(screen => ({ screen, win: () => children.get(screen), getWebContents: () => children.get(screen)?.webContents, indexPath: path.join(__dirname, 'views', screen + '.html'), capabilities: screen === 'joiner' ? ['secondary-bootstrap', 'joined-image', 'save-joined-image', 'background-rotator'] : ['secondary-bootstrap'] }))
@@ -91,7 +97,7 @@ async function start () {
     children.set(name, win); win.on('closed', () => children.delete(name))
     await win.loadFile(scope.indexPath)
   }
-  const methods = createExtraMethods({ electron, preferences, userData: legacyDirectory, imageParent, resources: __dirname, testMode, openScreen,
+  const methods = createExtraMethods({ electron, preferences, userData: legacyDirectory, imageParent, resources: __dirname, testMode, chooseDialog, openScreen,
     imageStaged: result => primary?.webContents.send('aio:image-staged', result),
     preferencesChanged: store => primary?.webContents.send('aio:preferences-changed', store),
     requestFlushAck (scope, token, error) {
@@ -102,7 +108,7 @@ async function start () {
     } })
   primaryScope.capabilities = Object.keys(methods).filter(name => name !== 'secondary-bootstrap')
   const drainScoped = registerScopedIpc({ ipcMain, scopes: [primaryScope, ...secondaryScopes], methods })
-  attachCloseBarrier(primary, async () => {
+  const installCloseBarrier = win => attachCloseBarrier(win, async () => {
     await new Promise((resolve, reject) => {
       const token = randomUUID()
       const timer = setTimeout(() => { pendingFlush.delete(token); reject(Error('Renderer preference flush timed out; window remains open')) }, 10000)
@@ -113,6 +119,17 @@ async function start () {
     const saved = await preferences.getPreferences('aio-persist')
     await preferences.setPreference('aio-persist', 'visits', Number(saved.visits || 0) + 1)
   }, reportError)
+  installCloseBarrier(primary)
+  if (testMode) fixtureControls.reopen = async () => {
+    const previous = primary
+    const closed = new Promise(resolve => previous.once('closed', resolve))
+    previous.close(); await closed
+    primary = makeWindow(indexPath)
+    installCloseBarrier(primary)
+    primary.on('closed', () => { primary = null })
+    await primary.loadFile(indexPath)
+    return primary
+  }
   app.on('before-quit', event => {
     if (primary) { event.preventDefault(); primary.close() }
   })
@@ -130,7 +147,7 @@ async function start () {
     { label: 'Help', submenu: [{ label: 'About', click: () => openScreen('info').catch(reportError) }, { label: 'Image joiner', click: () => openScreen('joiner').catch(reportError) }] }
   ]))
   await primary.loadFile(indexPath)
-  if (testMode) await require('./desktop/hidden-smoke')({ app, primary, openScreen, children, service, imageParent, runtimeErrors, output: process.env.MZD_AIO_TEST_OUTPUT })
+  if (testMode) await require('./desktop/hidden-smoke')({ app, primary, openScreen, children, service, fixtureControls, imageParent, runtimeErrors, output: process.env.MZD_AIO_TEST_OUTPUT })
 }
 // The hidden launcher owns a scratch-only OS file lock: Chromium's native
 // singleton socket directory is denied by the outer sandbox. Production always
@@ -144,6 +161,6 @@ if (!testMode && !app.requestSingleInstanceLock()) {
       primary.focus()
     }
   })
-  app.whenReady().then(start).catch(error => { reportError(error); app.exit(1) })
+  app.whenReady().then(start).catch(error => { if (testMode) console.error('HIDDEN_RUNTIME_ERRORS', JSON.stringify(runtimeErrors)); reportError(error); app.exit(1) })
   app.on('window-all-closed', () => { if (!testMode) app.quit() })
 }

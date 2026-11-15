@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict')
 const fs = require('node:fs/promises')
 const path = require('node:path')
-module.exports = async function hiddenSmoke ({ app, primary, openScreen, children, service, imageParent, runtimeErrors, output }) {
+module.exports = async function hiddenSmoke ({ app, primary, openScreen, children, service, fixtureControls, imageParent, runtimeErrors, output }) {
   const evaluate = code => primary.webContents.executeJavaScript(code)
   await evaluate('window.desktopStartup')
   // Angular bootstrap completion precedes asynchronous ng-view template loading.
@@ -39,6 +39,8 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   assert.equal(await evaluate(`aio.chooseImage('background')`), null)
   await assert.rejects(evaluate(`aio.chooseImage('invalid')`), /kind/i)
   await assert.rejects(evaluate(`aio.compile({ options: { options: [999] }, outputParent: '/invalid' })`), /allowed|Invalid/)
+  const finalFrontDoor = await require('./final-front-door-smoke')({ primary, fixtureControls, app, imageParent, output })
+  primary = finalFrontDoor.primary
   const compilation = await evaluate(`(async () => {
     const scope = angular.element(document.body).scope()
     scope.user.options = [5]; scope.user.mainOps = [0, 4, 7]
@@ -100,7 +102,7 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   let retainedBackup
   sync.rmSync = (name, ...args) => {
     if (path.dirname(String(name)) === path.dirname(compilation.result.outputDirectory) && path.basename(String(name)).startsWith('.aio-previous-')) {
-      retainedBackup = String(name); throw Error('hidden-only old-backup removal failure')
+      retainedBackup = String(name); throw Error('hidden-only old-backup removal failure <img data-warning-probe=unsafe src=x>')
     }
     return originalRm(name, ...args)
   }
@@ -112,6 +114,9 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   assert.equal(await fs.readFile(path.join(retainedBackup, 'tweaks.sh'), 'utf8'), generatedScript)
   assert.equal(require('./compiler-manifest').verifyOwned(retainedBackup), true)
   assert.ok(cleanupEvents.some(e => e.stage === 'warning' && e.code === 'BACKUP_CLEANUP_FAILED' && e.recoverable && e.backupDirectory === retainedBackup))
+  const warningText = await evaluate(`[...document.querySelectorAll('.gritter-item')].map(x=>x.textContent).join('\\n')`)
+  assert.equal(await evaluate(`document.querySelectorAll('[data-warning-probe]').length`), 0)
+  assert.ok(warningText.includes('data-warning-probe=unsafe')); assert.ok(warningText.includes(retainedBackup)); assert.match(warningText, /Package generated.*Retained backup/s); assert.doesNotMatch(warningText, /\[object Object\]/)
   console.log('COMPILER_FIX_REGRESSION_PASS', JSON.stringify({ scalarFailures, cleanupCompilation, retainedBackup, cleanupEvents: cleanupEvents.filter(e => e.stage !== 'generate') }))
   const builtin = await evaluate(`aio.selectBuiltinImage('background')`)
   const { nativeImage } = require('electron')
@@ -149,18 +154,17 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   await new Promise(resolve => setTimeout(resolve, 100))
   assert.equal(await evaluate(`settings.get('stagedImages.background')`), joinedImage.destination)
   assert.deepEqual(await evaluate(`settings.get('backgroundRotator')`), { images: 2, seconds: 60 })
-  const representative = await evaluate(`(async () => {
+  await evaluate(`(async () => {
     await aio.selectBuiltinImage('offscreen'); await aio.selectBuiltinImage('album')
     const messages = await aio.loadMessages(), language = messages.Node.Node[0].Node[0]
     const values = language.Node.map(node => node.$.value)
     values[0] = 'Task 5 scratch message & XML'
     await aio.saveMessages(language.$.key, values)
-    const scope = angular.element(document.body).scope()
+  })()`)
+  const representative = await finalFrontDoor.frontDoor(`
     scope.user.options = [5, 11, 16, 19]
     scope.user.mainOps = [0, 2, 3, 4, 6, 10]; scope.user.colors = 8
-    bootbox.hideAll(); await scope.compileTweaks(); bootbox.hideAll()
-    return { result: scope.compileResult, error: scope.compileError }
-  })()`)
+  `)
   assert.equal(representative.error, null)
   assert.ok(representative.result?.files.includes('config/speedometer/speedometer-config.js'))
   const generated = representative.result.outputDirectory
@@ -232,7 +236,7 @@ module.exports = async function hiddenSmoke ({ app, primary, openScreen, childre
   await new Promise(resolve => primary.once('closed', resolve))
   const saved = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'preferences/aio-persist.json'), 'utf8'))
   assert.equal(saved.closeSmoke, 'flushed')
-  await fs.writeFile(path.join(output, 'hidden-smoke.json'), JSON.stringify({ runtime, windowsHiddenAtChecks: true, scalarFailures, cleanupCompilation, retainedBackup, cleanupEvents, compilation, compilationFailure, representative, generatedManifest, state, bridge, retainedJoiner, delayedMessages, editorShortcuts, secondary, joined, joinedImage, translatorReady, runtimeInstrumentationVerified: true, nativeImage: builtin, foreignNavigationRejected: prevented, closeFlushed: true, runtimeErrors }, null, 2))
+  await fs.writeFile(path.join(output, 'hidden-smoke.json'), JSON.stringify({ finalFrontDoor: finalFrontDoor.results, runtime, windowsHiddenAtChecks: true, scalarFailures, cleanupCompilation, retainedBackup, cleanupEvents, compilation, compilationFailure, representative, generatedManifest, state, bridge, retainedJoiner, delayedMessages, editorShortcuts, secondary, joined, joinedImage, translatorReady, runtimeInstrumentationVerified: true, nativeImage: builtin, foreignNavigationRejected: prevented, closeFlushed: true, runtimeErrors }, null, 2))
   console.log('HIDDEN_SMOKE_PASS')
   app.exit(0)
 }

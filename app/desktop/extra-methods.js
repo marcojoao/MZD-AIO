@@ -5,17 +5,26 @@ const { randomUUID } = require('node:crypto')
 const { readRegular, writeAtomic } = require('./native-adapters')
 const { validateValue } = require('../assets/js/desktop-client')
 const { resolveOutputDirectory } = require('./policy')
-function createExtraMethods ({ electron, preferences, userData, imageParent, resources, testMode, openScreen, requestFlushAck, imageStaged = () => {}, preferencesChanged = () => {} }) {
+function createExtraMethods ({ electron, preferences, userData, imageParent, resources, testMode, chooseDialog, openScreen, requestFlushAck, imageStaged = () => {}, preferencesChanged = () => {} }) {
   const themeGrants = new Map()
-  const compile = require('./services').createCompilationService(require('./compiler').createCompiler({
-    resources, userData, imageParent,
+  const images = require('./image-state').createImageResolver({ resources, userData, imageParent, decode: bytes => {
+    const image = electron.nativeImage.createFromBuffer(bytes)
+    if (image.isEmpty()) throw Error('Invalid image')
+    return image.getSize()
+  } })
+  const compiler = require('./compiler').createCompiler({
+    resources, userData, imageParent, resolveImage: images.resolve,
     getState: async user => {
       const theme = themeGrants.get(user.customTheme?.token)
       // Acknowledged preference state, not renderer-provided filenames or metadata.
       const data = await preferences.getPreferences('aio-data')
       return { backgroundRotator: data.backgroundRotator, theme }
     }
-  }))
+  })
+  const compile = require('./services').createCompilationService({ async compile (request, onProgress) {
+    const saved = await preferences.getPreferences('aio-persist')
+    return compiler.compile(saved.copyFolderLocation ? { ...request, outputParent: saved.copyFolderLocation } : request, onProgress)
+  } })
   const editorNames = { translator: 'aio-translate-save', speedo: 'speedo-config' }
   const editorName = name => { if (!Object.hasOwn(editorNames, name)) throw Error('Invalid editor'); return editorNames[name] }
   const object = value => { validateValue(value); if (!value || Array.isArray(value) || typeof value !== 'object' || JSON.stringify(value).length > 4 * 1024 * 1024) throw Error('Invalid editor object'); return value }
@@ -41,7 +50,7 @@ function createExtraMethods ({ electron, preferences, userData, imageParent, res
     const bytes = JSON.stringify({ data: object(value) })
     return ordered('editor:' + file, async () => { await writeAtomic(path.join(userData, 'editors'), file + '.json', bytes); return JSON.parse(bytes).data })
   }
-  const choose = async (scope, options) => { if (testMode) return null; const result = await electron.dialog.showOpenDialog(scope.win(), options); return result.canceled ? null : result.filePaths[0] || null }
+  const choose = async (scope, options) => { if (testMode) return chooseDialog ? chooseDialog(options) : null; const result = await electron.dialog.showOpenDialog(scope.win(), options); return result.canceled ? null : result.filePaths[0] || null }
   async function stageImage (source, kind, resize = true) {
     const image = electron.nativeImage.createFromBuffer(await readRegular(source))
     if (image.isEmpty()) throw Error('Could not decode image')
@@ -71,6 +80,7 @@ function createExtraMethods ({ electron, preferences, userData, imageParent, res
   }
   const method = (count, run) => ({ count, run })
   return {
+    'image-state': method(0, () => images.previews()),
     'reset-window': method(0, async scope => { if (!testMode) { scope.win().setSize(1280, 800); scope.win().center() } }),
     'open-screen': method(1, (_, name) => { if (!['info', 'joiner'].includes(name)) throw Error('Invalid screen'); return openScreen(name) }),
     'secondary-bootstrap': method(0, async scope => { const data = await preferences.bootstrap(); return { app: data.app, screen: scope.screen, labels: { imgOps: data.language.messages.imgOps, menu: data.language.messages.menu } } }),

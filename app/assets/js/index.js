@@ -18,12 +18,12 @@ var visits = persistantData.get('visits', 0)
 var hasSpeedCamFiles = false // fs.existsSync(`${app.getPath('userData')}/speedcam-patch/`)
 // Language and app/path metadata are supplied by desktopData.
 var colordir = `${app.getPath('userData')}/color-schemes/` // Location of downloaded color theme files (userData)
-var hasColorFiles = false
+// Asset availability is resolved by the main compiler per selection.
 var approot = desktopData.paths.home
 var builddir = `${approot}/files/tweaks/` // Location of tweak files (as .txt files)
 var logFileName = 'MZD_LOG' // Name of log file (without extension)
 var varDir = `${app.getPath('userData')}/background/` // Location of files with saved variables
-var getBackground = `${varDir}/background.png`
+var getBackground = desktopData.images?.background?.preview || ''
 var date = function () { return new Date() }
 var dataURL = ''
 var aioURL = ''
