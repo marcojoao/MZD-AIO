@@ -2,6 +2,26 @@
 
 ## MZD All In One tweaks Installer
 
+## Desktop Modernization (branch `modernization/desktop-implementation`)
+
+This fork modernizes the original abandoned Electron app so it builds and runs on current tooling. Scope is desktop-app-only: vehicle tweak payloads, the install workflow and existing UI/behavior are preserved unchanged.
+
+**What changed:**
+- Electron upgraded 6 → 45.3.1, Node 13 → 22.22.3, electron-builder → 26.18.0
+- Removed renderer Node/remote access; replaced with scoped preload/main IPC APIs
+- Production windows: sandbox enabled, context isolation on, no Node integration
+- Legacy automatic network services (auto-update, crash upload) disabled
+- Compiler output moved to safe main-owned staged generation with an explicit publication commit point (pre-publish failures preserve old output; post-publish cleanup can't falsely report failure)
+- Dependency pruning: unused/vulnerable shipped packages removed, direct pins for `yauzl@3.4.0` and `xml2js@0.6.2`; app-level `npm audit` is clean (root build-tooling audit still has disclosed findings, not shipped)
+- Fixed: ordinary "Start Compilation" button was blocked for all color/theme selections; saved selections silently overrode a newly chosen output folder after restart; legacy custom background/album-art images were being replaced with defaults on upgrade instead of preserved
+- Full test suite (145+ tests), vehicle payload integrity check (1,585 files verified byte-identical throughout), and real packaged + ZIP smoke tests on Apple Silicon
+
+**Not done / explicitly out of scope:** code signing & notarization, Windows/Linux builds, vehicle firmware/USB install acceptance, production inner-sandbox visual verification. See `docs/superpowers/specs/2026-11-13-desktop-modernization-design.md` and `docs/superpowers/plans/2026-11-13-desktop-modernization.md` for the full design/plan, and `docs/development.md` / `docs/desktop-services.md` for updated dev setup and architecture.
+
+Current unsigned Apple Silicon build: `releases/modernization-2.8.6-arm64-final/`.
+
+---
+
 #### Installer and uninstaller for several different system tweaks for Mazda MZD Infotainment System
 
  [How To Install](#how-to-install)
